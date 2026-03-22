@@ -13,14 +13,14 @@ const navLinks = [
 
 const Navbar = () => {
   const [open, setOpen] = useState(false);
-  const { isAuthenticated, login } = useAuth();
+  const { isAuthenticated, loginDemo } = useAuth();
   const navigate = useNavigate();
   const [demoLoading, setDemoLoading] = useState(false);
 
   const handleTryDemo = async () => {
     setDemoLoading(true);
     try {
-      await login();
+      await loginDemo();
       navigate("/dashboard");
     } finally {
       setDemoLoading(false);
@@ -53,13 +53,18 @@ const Navbar = () => {
               Dashboard
             </Link>
           ) : (
-            <button
-              onClick={handleTryDemo}
-              disabled={demoLoading}
-              className="bg-accent text-accent-foreground px-5 py-2 rounded-full text-sm font-semibold hover:brightness-110 transition-all disabled:opacity-50"
-            >
-              {demoLoading ? "Signing in…" : "Try demo"}
-            </button>
+            <>
+              <Link to="/auth" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                Sign in
+              </Link>
+              <button
+                onClick={handleTryDemo}
+                disabled={demoLoading}
+                className="bg-accent text-accent-foreground px-5 py-2 rounded-full text-sm font-semibold hover:brightness-110 transition-all disabled:opacity-50"
+              >
+                {demoLoading ? "Signing in…" : "Try demo"}
+              </button>
+            </>
           )}
           <a href="#pricing" className="bg-accent text-accent-foreground px-5 py-2 rounded-full text-sm font-semibold hover:brightness-110 transition-all">
             Get early access
@@ -91,13 +96,18 @@ const Navbar = () => {
                   Dashboard
                 </Link>
               ) : (
-                <button
-                  onClick={() => { handleTryDemo(); setOpen(false); }}
-                  disabled={demoLoading}
-                  className="bg-accent text-accent-foreground px-5 py-2 rounded-full text-sm font-semibold text-center disabled:opacity-50"
-                >
-                  {demoLoading ? "Signing in…" : "Try demo"}
-                </button>
+                <>
+                  <Link to="/auth" onClick={() => setOpen(false)} className="text-sm text-muted-foreground">
+                    Sign in
+                  </Link>
+                  <button
+                    onClick={() => { void handleTryDemo(); setOpen(false); }}
+                    disabled={demoLoading}
+                    className="bg-accent text-accent-foreground px-5 py-2 rounded-full text-sm font-semibold text-center disabled:opacity-50"
+                  >
+                    {demoLoading ? "Signing in…" : "Try demo"}
+                  </button>
+                </>
               )}
               <a href="#pricing" className="bg-accent text-accent-foreground px-5 py-2 rounded-full text-sm font-semibold text-center">
                 Get early access

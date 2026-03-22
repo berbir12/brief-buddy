@@ -6,6 +6,8 @@ export interface AuthenticatedRequest extends Request {
   user?: { id: string };
 }
 
+const UUID_PARAM_RE = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i;
+
 export function requireAuth(req: AuthenticatedRequest, res: Response, next: NextFunction): void {
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith("Bearer ")) {
@@ -20,7 +22,12 @@ export function requireAuth(req: AuthenticatedRequest, res: Response, next: Next
       res.status(401).json({ error: "Invalid token payload" });
       return;
     }
-    req.user = { id: (payload as { sub: string }).sub };
+    const sub = (payload as { sub: string }).sub;
+    if (!UUID_PARAM_RE.test(sub)) {
+      res.status(401).json({ error: "Invalid token" });
+      return;
+    }
+    req.user = { id: sub };
     next();
   } catch {
     res.status(401).json({ error: "Invalid token" });

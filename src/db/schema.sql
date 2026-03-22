@@ -1,10 +1,21 @@
 CREATE TABLE IF NOT EXISTS users (
   id UUID PRIMARY KEY,
   email TEXT NOT NULL UNIQUE,
+  password_hash TEXT,
+  email_verified_at TIMESTAMPTZ,
   phone TEXT,
   timezone TEXT NOT NULL DEFAULT 'UTC',
   eleven_labs_voice_id TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS email_verification_tokens (
+  id UUID PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token_hash TEXT NOT NULL UNIQUE,
+  expires_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  used_at TIMESTAMPTZ
 );
 
 CREATE TABLE IF NOT EXISTS integrations (
@@ -14,6 +25,10 @@ CREATE TABLE IF NOT EXISTS integrations (
   access_token TEXT NOT NULL,
   refresh_token TEXT,
   expires_at TIMESTAMPTZ,
+  status TEXT NOT NULL DEFAULT 'connected',
+  last_error TEXT,
+  last_synced_at TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (user_id, provider)
 );
@@ -51,5 +66,34 @@ CREATE TABLE IF NOT EXISTS settings (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS briefing_job_events (
+  id UUID PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  job_id TEXT NOT NULL,
+  mode TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  detail TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE INDEX IF NOT EXISTS idx_tasks_user_status ON tasks (user_id, status);
 CREATE INDEX IF NOT EXISTS idx_briefings_user_created ON briefings (user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_briefing_job_events_user_created ON briefing_job_events (user_id, created_at DESC);
+
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS password_hash TEXT;
+
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMPTZ;
+
+ALTER TABLE integrations
+  ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'connected';
+
+ALTER TABLE integrations
+  ADD COLUMN IF NOT EXISTS last_error TEXT;
+
+ALTER TABLE integrations
+  ADD COLUMN IF NOT EXISTS last_synced_at TIMESTAMPTZ;
+
+ALTER TABLE integrations
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();

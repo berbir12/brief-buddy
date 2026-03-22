@@ -1,16 +1,20 @@
 import { briefingQueue } from "./queue";
-import { listUserIds } from "../db/queries";
+import { listUserSchedules } from "../db/queries";
+import { dailyCronAt } from "./cron";
 
 export async function registerMorningBriefingJob(): Promise<void> {
-  const userIds = await listUserIds();
+  const schedules = await listUserSchedules();
   await Promise.all(
-    userIds.map((userId) =>
+    schedules.map((schedule) =>
       briefingQueue.upsertJobScheduler(
-        `morning-briefing-${userId}`,
-        { pattern: "0 7 * * *" },
+        `morning-briefing-${schedule.userId}`,
+        {
+          pattern: dailyCronAt(schedule.morningTime),
+          tz: schedule.timezone || "UTC"
+        },
         {
           name: "morning-briefing",
-          data: { userId, mode: "morning" }
+          data: { userId: schedule.userId, mode: "morning" }
         }
       )
     )

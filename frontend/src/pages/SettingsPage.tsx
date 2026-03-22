@@ -2,11 +2,27 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { getSettings, getIntegrations, updateSettings, getOAuthStartUrl } from "@/lib/api";
+import {
+  disconnectIntegration,
+  getBriefingJobEvents,
+  getIntegrationsDiagnostics,
+  getOAuthStartUrl,
+  getSettings,
+  getSystemHealth,
+  updateSettings
+} from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
 
-const tabs = ["Briefing Schedule", "Voice", "Integrations", "Urgency Rules"];
+const tabs = ["Briefing Schedule", "Voice", "Integrations", "Urgency Rules", "Operations"];
 
 const voices = ["Rachel (Default)", "Marcus (Deep)", "Sofia (Warm)", "Alex (Neutral)"];
+
+function formatLastSync(lastSyncedAt: string | null): string | null {
+  if (!lastSyncedAt) return null;
+  const date = new Date(lastSyncedAt);
+  if (Number.isNaN(date.getTime())) return null;
+  return `Synced ${date.toLocaleString()}`;
+}
 
 const SettingsPage = () => {
   const [activeTab, setActiveTab] = useState(0);
@@ -21,15 +37,33 @@ const SettingsPage = () => {
 
   const queryClient = useQueryClient();
   const [connectingProvider, setConnectingProvider] = useState<"google" | "slack" | null>(null);
+  const [disconnectingProvider, setDisconnectingProvider] = useState<"google" | "slack" | null>(null);
+  const [integrationError, setIntegrationError] = useState<string | null>(null);
+  const [verificationInfo, setVerificationInfo] = useState<string | null>(null);
+  const { emailVerified, resendVerification } = useAuth();
 
   const { data: settings } = useQuery({
     queryKey: ["settings"],
     queryFn: getSettings,
   });
 
-  const { data: integrations = [] } = useQuery({
-    queryKey: ["integrations"],
-    queryFn: getIntegrations,
+  const { data: integrationDiagnostics } = useQuery({
+    queryKey: ["integrations", "diagnostics"],
+    queryFn: getIntegrationsDiagnostics,
+    refetchInterval: 60_000,
+  });
+  const integrations = integrationDiagnostics?.integrations ?? [];
+
+  const { data: systemHealth, isLoading: systemHealthLoading } = useQuery({
+    queryKey: ["system-health"],
+    queryFn: getSystemHealth,
+    refetchInterval: 60_000,
+  });
+
+  const { data: jobEvents = [], isLoading: jobEventsLoading } = useQuery({
+    queryKey: ["briefing-job-events", "settings"],
+    queryFn: () => getBriefingJobEvents(15),
+    refetchInterval: 60_000,
   });
 
   useEffect(() => {
@@ -88,34 +122,62 @@ const SettingsPage = () => {
     {
       name: "Gmail",
       icon: "📧",
-      connected: integrations.some((i) => i.provider === "google" && i.connected),
-      lastSync: "5 min ago",
+      status: integrations.find((i) => i.provider === "google"),
       provider: "google" as const,
     },
     {
       name: "Google Calendar",
       icon: "📅",
-      connected: integrations.some((i) => i.provider === "google" && i.connected),
-      lastSync: "5 min ago",
+      status: integrations.find((i) => i.provider === "google"),
       provider: "google" as const,
     },
     {
       name: "Slack",
       icon: "💬",
-      connected: integrations.some((i) => i.provider === "slack" && i.connected),
-      lastSync: "12 min ago",
+      status: integrations.find((i) => i.provider === "slack"),
       provider: "slack" as const,
     },
-    { name: "HubSpot", icon: "🟠", connected: false, provider: "crm" as const, comingSoon: true },
+    { name: "HubSpot", icon: "🟠", status: null, provider: "crm" as const, comingSoon: true },
   ];
 
   const connectIntegration = async (provider: "google" | "slack") => {
+    setIntegrationError(null);
     setConnectingProvider(provider);
     try {
       const { url } = await getOAuthStartUrl(provider);
       window.location.assign(url);
+    } catch (error) {
+      setIntegrationError(error instanceof Error ? error.message : "Unable to connect integration.");
     } finally {
       setConnectingProvider(null);
+    }
+  };
+
+  const handleDisconnect = async (provider: "google" | "slack") => {
+    setIntegrationError(null);
+    setDisconnectingProvider(provider);
+    try {
+      await disconnectIntegration(provider);
+      await queryClient.invalidateQueries({ queryKey: ["integrations", "diagnostics"] });
+    } catch (error) {
+      setIntegrationError(error instanceof Error ? error.message : "Unable to disconnect integration.");
+    } finally {
+      setDisconnectingProvider(null);
+    }
+  };
+
+  const handleResendVerification = async () => {
+    setVerificationInfo(null);
+    setIntegrationError(null);
+    try {
+      const result = await resendVerification();
+      if (result.alreadyVerified) {
+        setVerificationInfo("Email is already verified.");
+      } else {
+        setVerificationInfo("Verification email sent. Check your inbox.");
+      }
+    } catch (error) {
+      setIntegrationError(error instanceof Error ? error.message : "Unable to resend verification email.");
     }
   };
 
@@ -256,41 +318,86 @@ const SettingsPage = () => {
 
         {activeTab === 2 && (
           <div className="space-y-3">
+            {!emailVerified && (
+              <div className="card-surface p-4">
+                <p className="text-sm font-medium text-foreground">Verify your email to connect integrations</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Google and Slack connections are blocked until your account email is verified.
+                </p>
+                <button
+                  onClick={() => void handleResendVerification()}
+                  className="mt-3 text-xs font-medium px-3 py-1.5 rounded-full bg-accent text-accent-foreground hover:brightness-110"
+                >
+                  Resend verification email
+                </button>
+                {verificationInfo ? <p className="text-xs text-muted-foreground mt-2">{verificationInfo}</p> : null}
+              </div>
+            )}
+            {integrationError ? (
+              <div className="card-surface p-4">
+                <p className="text-xs text-destructive">{integrationError}</p>
+              </div>
+            ) : null}
             {integrationList.map((item) => (
               <div key={item.name} className="card-surface p-4 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <span className="text-2xl">{item.icon}</span>
                   <div>
                     <span className="font-medium text-foreground text-sm">{item.name}</span>
-                    {item.connected && item.lastSync && (
-                      <span className="text-xs text-muted-foreground block">Synced {item.lastSync}</span>
-                    )}
+                    {item.status?.lastSyncedAt ? (
+                      <span className="text-xs text-muted-foreground block">{formatLastSync(item.status.lastSyncedAt)}</span>
+                    ) : null}
+                    {item.status?.lastError ? (
+                      <span className="text-xs text-destructive block">{item.status.lastError}</span>
+                    ) : null}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <div
                     className={cn(
                       "w-2 h-2 rounded-full",
-                      item.connected ? "bg-green-500" : "bg-muted-foreground/30"
+                      item.status?.connected ? "bg-green-500" : "bg-muted-foreground/30"
                     )}
                   />
                   {item.provider === "google" && (
-                    <button
-                      onClick={() => connectIntegration("google")}
-                      disabled={connectingProvider === "google"}
-                      className="text-xs font-medium px-3 py-1 rounded-full bg-accent text-accent-foreground hover:brightness-110 disabled:opacity-60"
-                    >
-                      {item.connected ? "Reconnect" : "Connect"}
-                    </button>
+                    <>
+                      <button
+                        onClick={() => connectIntegration("google")}
+                        disabled={connectingProvider === "google" || !emailVerified}
+                        className="text-xs font-medium px-3 py-1 rounded-full bg-accent text-accent-foreground hover:brightness-110 disabled:opacity-60"
+                      >
+                        {item.status?.requiresReconnect || !item.status?.connected ? "Connect" : "Reconnect"}
+                      </button>
+                      {item.status?.connected ? (
+                        <button
+                          onClick={() => void handleDisconnect("google")}
+                          disabled={disconnectingProvider === "google"}
+                          className="text-xs font-medium px-3 py-1 rounded-full border border-border text-muted-foreground hover:text-foreground disabled:opacity-60"
+                        >
+                          Disconnect
+                        </button>
+                      ) : null}
+                    </>
                   )}
                   {item.provider === "slack" && (
-                    <button
-                      onClick={() => connectIntegration("slack")}
-                      disabled={connectingProvider === "slack"}
-                      className="text-xs font-medium px-3 py-1 rounded-full bg-accent text-accent-foreground hover:brightness-110 disabled:opacity-60"
-                    >
-                      {item.connected ? "Reconnect" : "Connect"}
-                    </button>
+                    <>
+                      <button
+                        onClick={() => connectIntegration("slack")}
+                        disabled={connectingProvider === "slack" || !emailVerified}
+                        className="text-xs font-medium px-3 py-1 rounded-full bg-accent text-accent-foreground hover:brightness-110 disabled:opacity-60"
+                      >
+                        {item.status?.requiresReconnect || !item.status?.connected ? "Connect" : "Reconnect"}
+                      </button>
+                      {item.status?.connected ? (
+                        <button
+                          onClick={() => void handleDisconnect("slack")}
+                          disabled={disconnectingProvider === "slack"}
+                          className="text-xs font-medium px-3 py-1 rounded-full border border-border text-muted-foreground hover:text-foreground disabled:opacity-60"
+                        >
+                          Disconnect
+                        </button>
+                      ) : null}
+                    </>
                   )}
                   {item.provider === "crm" && (
                     <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted/10 text-muted-foreground border border-border">
@@ -352,6 +459,81 @@ const SettingsPage = () => {
               {updateMutation.isPending ? "Saving…" : "Save urgency rules"}
             </button>
           </>
+        )}
+
+        {activeTab === 4 && (
+          <div className="space-y-4">
+            <div className="card-surface p-6">
+              <h3 className="text-sm font-semibold text-foreground mb-3">System Health</h3>
+              {systemHealthLoading ? (
+                <p className="text-sm text-muted-foreground">Loading system health…</p>
+              ) : (
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="rounded-lg border border-border/50 p-3">
+                      <p className="text-xs text-muted-foreground">Queue</p>
+                      <p className="text-sm font-medium text-foreground">
+                        W:{systemHealth?.queue.waiting ?? 0} A:{systemHealth?.queue.active ?? 0} D:{systemHealth?.queue.delayed ?? 0}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-border/50 p-3">
+                      <p className="text-xs text-muted-foreground">Recent jobs</p>
+                      <p className="text-sm font-medium text-foreground">
+                        {systemHealth?.queue.completedRecent ?? 0} completed / {systemHealth?.queue.failedRecent ?? 0} failed
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-border/50 p-3">
+                      <p className="text-xs text-muted-foreground">Delivery rate (7d)</p>
+                      <p className="text-sm font-medium text-foreground">
+                        {Math.round((systemHealth?.metrics.deliveryRate7d ?? 0) * 100)}%
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-3">
+                    {systemHealth?.warnings.length ? (
+                      <div className="space-y-1">
+                        {systemHealth.warnings.map((warning) => (
+                          <p key={warning} className="text-xs text-destructive">
+                            {warning}
+                          </p>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-green-500">No active reliability warnings.</p>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="card-surface p-6">
+              <h3 className="text-sm font-semibold text-foreground mb-3">Recent Job Events</h3>
+              {jobEventsLoading ? (
+                <p className="text-sm text-muted-foreground">Loading job events…</p>
+              ) : jobEvents.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No recent job events.</p>
+              ) : (
+                <div className="space-y-2">
+                  {jobEvents.map((event) => (
+                    <div key={event.id} className="rounded-lg border border-border/50 p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <p
+                          className={cn(
+                            "text-xs font-medium capitalize",
+                            event.eventType === "failed" ? "text-destructive" : "text-foreground"
+                          )}
+                        >
+                          {event.mode} · {event.eventType}
+                        </p>
+                        <p className="text-xs text-muted-foreground">{new Date(event.createdAt).toLocaleString()}</p>
+                      </div>
+                      {event.detail ? <p className="text-xs text-muted-foreground mt-1">{event.detail}</p> : null}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         )}
       </motion.div>
     </div>

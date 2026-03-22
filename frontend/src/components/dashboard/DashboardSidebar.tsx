@@ -20,7 +20,7 @@ const navItems = [
 
 const DashboardSidebar = () => {
   const location = useLocation();
-  const { logout } = useAuth();
+  const { logout, email } = useAuth();
 
   return (
     <>
@@ -63,11 +63,11 @@ const DashboardSidebar = () => {
             </div>
             <div className="min-w-0">
               <p className="text-sm font-medium text-foreground truncate">Demo User</p>
-              <p className="text-xs text-muted-foreground">Brief Buddy</p>
+              <p className="text-xs text-muted-foreground truncate">{email ?? "Brief Buddy"}</p>
             </div>
           </div>
           <button
-            onClick={logout}
+            onClick={() => void logout()}
             className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-sidebar-accent transition-colors flex-shrink-0"
             title="Sign out"
           >

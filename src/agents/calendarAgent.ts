@@ -1,6 +1,8 @@
 import dayjs from "dayjs";
 import { google } from "googleapis";
 import { CalendarEvent } from "../types/briefing";
+import { markIntegrationSyncFailure, markIntegrationSyncSuccess } from "../db/queries";
+import { normalizeIntegrationError } from "../integrations/errors";
 import { refreshGoogleTokenIfNeeded } from "../integrations/tokens";
 import { withTimeout } from "../utils/timeouts";
 
@@ -18,32 +20,54 @@ export async function fetchCalendarEvents(userId: string, mode: "morning" | "eve
   return withTimeout(
     (async () => {
       const auth = await refreshGoogleTokenIfNeeded(userId);
-      if (!auth) return [];
+      if (!auth) {
+        const normalized = normalizeIntegrationError("google", "integration unavailable");
+        await markIntegrationSyncFailure({
+          userId,
+          provider: "google",
+          error: normalized.message,
+          requiresReconnect: true
+        });
+        return [];
+      }
 
-      const calendar = google.calendar({ version: "v3", auth });
-      const baseDay = mode === "evening" ? dayjs().add(1, "day") : dayjs();
-      const timeMin = baseDay.startOf("day").toISOString();
-      const timeMax = baseDay.endOf("day").toISOString();
+      try {
+        const calendar = google.calendar({ version: "v3", auth });
+        const baseDay = mode === "evening" ? dayjs().add(1, "day") : dayjs();
+        const timeMin = baseDay.startOf("day").toISOString();
+        const timeMax = baseDay.endOf("day").toISOString();
 
-      const events = await calendar.events.list({
-        calendarId: "primary",
-        timeMin,
-        timeMax,
-        singleEvents: true,
-        orderBy: "startTime",
-        maxResults: 25
-      });
+        const events = await calendar.events.list({
+          calendarId: "primary",
+          timeMin,
+          timeMax,
+          singleEvents: true,
+          orderBy: "startTime",
+          maxResults: 25
+        });
 
-      return (events.data.items ?? []).map((event) => {
-        const attendees = parseAttendees(event.attendees as { email?: string | null }[] | undefined);
-        return {
-          title: event.summary ?? "Untitled event",
-          time: event.start?.dateTime ?? event.start?.date ?? "TBD",
-          attendees,
-          location: event.location ?? null,
-          isExternal: isExternalMeeting(attendees)
-        };
-      });
+        const mapped = (events.data.items ?? []).map((event) => {
+          const attendees = parseAttendees(event.attendees as { email?: string | null }[] | undefined);
+          return {
+            title: event.summary ?? "Untitled event",
+            time: event.start?.dateTime ?? event.start?.date ?? "TBD",
+            attendees,
+            location: event.location ?? null,
+            isExternal: isExternalMeeting(attendees)
+          };
+        });
+        await markIntegrationSyncSuccess(userId, "google");
+        return mapped;
+      } catch (error) {
+        const normalized = normalizeIntegrationError("google", error);
+        await markIntegrationSyncFailure({
+          userId,
+          provider: "google",
+          error: normalized.message,
+          requiresReconnect: normalized.requiresReconnect
+        });
+        throw error;
+      }
     })(),
     10_000,
     "calendar-agent"

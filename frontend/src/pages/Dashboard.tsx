@@ -9,6 +9,8 @@ import {
   getTasks,
   getBriefingsHistory,
   getIntegrations,
+  getBriefingMetrics,
+  getSystemHealth,
   triggerBriefing,
   updateTask,
   type TaskRow,
@@ -48,6 +50,18 @@ const Dashboard = () => {
   const { data: integrations = [], isLoading: integrationsLoading } = useQuery({
     queryKey: ["integrations"],
     queryFn: getIntegrations,
+  });
+
+  const { data: metrics, isLoading: metricsLoading } = useQuery({
+    queryKey: ["briefing-metrics"],
+    queryFn: getBriefingMetrics,
+    refetchInterval: 60_000,
+  });
+
+  const { data: systemHealth, isLoading: systemHealthLoading } = useQuery({
+    queryKey: ["system-health"],
+    queryFn: getSystemHealth,
+    refetchInterval: 60_000,
   });
 
   const triggerMutation = useMutation({
@@ -92,9 +106,9 @@ const Dashboard = () => {
       icon: Clock,
     },
     {
-      label: "Last Briefing",
-      value: historyLoading ? "…" : lastBriefing ? new Date(lastBriefing.createdAt).toLocaleDateString() : "—",
-      sub: lastBriefing?.deliveryStatus === "delivered" ? "Delivered ✓" : "—",
+      label: "Delivery (7d)",
+      value: metricsLoading ? "…" : `${Math.round((metrics?.deliveryRate7d ?? 0) * 100)}%`,
+      sub: metricsLoading ? "…" : `${metrics?.delivered7d ?? 0}/${metrics?.generated7d ?? 0} delivered`,
       subColor: "text-green-500/80",
       dot: "bg-green-500",
       icon: CheckCircle,
@@ -108,9 +122,9 @@ const Dashboard = () => {
       icon: AlertTriangle,
     },
     {
-      label: "CRM Alerts",
-      value: "—",
-      sub: "Connect CRM in Settings",
+      label: "Alerts (7d)",
+      value: metricsLoading ? "…" : String(metrics?.alerts7d ?? 0),
+      sub: metricsLoading ? "…" : `${metrics?.undelivered7d ?? 0} undelivered`,
       subColor: "text-accent",
       dot: "bg-accent",
       icon: TrendingUp,
@@ -288,13 +302,60 @@ const Dashboard = () => {
                 href={`/dashboard/settings`}
                 className="text-primary text-[10px] hover:underline"
               >
-                Connect
+                {i.status === "not_connected" ? "Connect" : "Reconnect"}
               </a>
             )}
           </div>
         ))}
         {integrationsLoading && <span className="text-xs text-muted-foreground">Loading…</span>}
       </div>
+
+      {/* System health */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.7 }}
+        className="card-surface p-6 mt-6"
+      >
+        <h2 className="text-sm font-semibold text-foreground mb-4">System Health</h2>
+        {systemHealthLoading ? (
+          <p className="text-sm text-muted-foreground">Loading system health…</p>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm mb-4">
+              <div className="rounded-lg border border-border/50 p-3">
+                <p className="text-muted-foreground text-xs">Queue</p>
+                <p className="font-medium text-foreground">
+                  W:{systemHealth?.queue.waiting ?? 0} A:{systemHealth?.queue.active ?? 0} D:{systemHealth?.queue.delayed ?? 0}
+                </p>
+              </div>
+              <div className="rounded-lg border border-border/50 p-3">
+                <p className="text-muted-foreground text-xs">Recent jobs</p>
+                <p className="font-medium text-foreground">
+                  {systemHealth?.queue.completedRecent ?? 0} completed / {systemHealth?.queue.failedRecent ?? 0} failed
+                </p>
+              </div>
+              <div className="rounded-lg border border-border/50 p-3">
+                <p className="text-muted-foreground text-xs">Delivery rate (7d)</p>
+                <p className="font-medium text-foreground">
+                  {Math.round(((systemHealth?.metrics.deliveryRate7d ?? 0) * 100))}%
+                </p>
+              </div>
+            </div>
+            {systemHealth?.warnings.length ? (
+              <div className="space-y-1">
+                {systemHealth.warnings.map((warning) => (
+                  <p key={warning} className="text-xs text-destructive">
+                    {warning}
+                  </p>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-green-500">No active reliability warnings.</p>
+            )}
+          </>
+        )}
+      </motion.div>
     </div>
   );
 };

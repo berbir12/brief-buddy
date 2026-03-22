@@ -5,7 +5,7 @@ import ModeBadge from "@/components/ModeBadge";
 import AudioPlayer from "@/components/AudioPlayer";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getBriefingsHistory, type BriefingRow } from "@/lib/api";
+import { getBriefingJobEvents, getBriefingsHistory, type BriefingJobEvent, type BriefingRow } from "@/lib/api";
 
 type Mode = "morning" | "evening" | "alert" | "weekly";
 
@@ -16,6 +16,12 @@ const BriefingsPage = () => {
   const { data: briefings = [], isLoading } = useQuery({
     queryKey: ["briefings"],
     queryFn: getBriefingsHistory,
+  });
+
+  const { data: jobEvents = [], isLoading: eventsLoading } = useQuery({
+    queryKey: ["briefing-job-events"],
+    queryFn: () => getBriefingJobEvents(20),
+    refetchInterval: 60_000,
   });
 
   const filtered: BriefingRow[] =
@@ -98,6 +104,37 @@ const BriefingsPage = () => {
       {!isLoading && filtered.length === 0 && (
         <p className="text-sm text-muted-foreground">No briefings yet. Trigger one from the Dashboard.</p>
       )}
+
+      <div className="mt-8">
+        <h2 className="text-sm font-semibold text-foreground mb-3">Recent Job Events</h2>
+        {eventsLoading ? (
+          <p className="text-sm text-muted-foreground">Loading job events…</p>
+        ) : jobEvents.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No recent job events.</p>
+        ) : (
+          <div className="space-y-2">
+            {jobEvents.map((event: BriefingJobEvent) => (
+              <div key={event.id} className="card-surface p-3 text-xs">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <ModeBadge mode={event.mode as Mode} />
+                    <span
+                      className={cn(
+                        "font-medium capitalize",
+                        event.eventType === "failed" ? "text-destructive" : "text-foreground"
+                      )}
+                    >
+                      {event.eventType}
+                    </span>
+                  </div>
+                  <span className="text-muted-foreground">{new Date(event.createdAt).toLocaleString()}</span>
+                </div>
+                {event.detail ? <p className="text-muted-foreground mt-1">{event.detail}</p> : null}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 };
