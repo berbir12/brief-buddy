@@ -60,6 +60,11 @@ CREATE TABLE IF NOT EXISTS settings (
   morning_time TEXT NOT NULL DEFAULT '07:00',
   evening_time TEXT NOT NULL DEFAULT '18:00',
   news_keywords TEXT[] NOT NULL DEFAULT ARRAY['small business','operations','sales'],
+  news_feeds TEXT[] NOT NULL DEFAULT ARRAY[
+    'https://feeds.feedburner.com/entrepreneur/latest',
+    'https://www.forbes.com/small-business/feed/',
+    'https://techcrunch.com/category/startups/feed/'
+  ],
   deal_value_threshold NUMERIC NOT NULL DEFAULT 10000,
   urgency_keywords TEXT[] NOT NULL DEFAULT ARRAY['urgent','asap','invoice','contract'],
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -97,3 +102,10 @@ ALTER TABLE integrations
 
 ALTER TABLE integrations
   ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+ALTER TABLE settings
+  ADD COLUMN IF NOT EXISTS news_feeds TEXT[] NOT NULL DEFAULT ARRAY[
+    'https://feeds.feedburner.com/entrepreneur/latest',
+    'https://www.forbes.com/small-business/feed/',
+    'https://techcrunch.com/category/startups/feed/'
+  ];

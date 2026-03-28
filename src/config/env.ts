@@ -34,6 +34,8 @@ const envSchema = z.object({
   SLACK_CLIENT_ID: z.string().optional(),
   SLACK_CLIENT_SECRET: z.string().optional(),
   SLACK_REDIRECT_URI: z.string().optional(),
+  ENABLE_CRM_AGENT: z.coerce.boolean().default(false),
+  ENABLE_NEWS_AGENT: z.coerce.boolean().default(true),
   HUBSPOT_API_KEY: z.string().optional(),
   AWS_S3_BUCKET: z.string().optional(),
   AWS_REGION: z.string().default("us-east-1"),

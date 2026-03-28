@@ -37,23 +37,33 @@ function signSessionToken(userId: string): string {
   return jwt.sign({ sub: userId }, env.JWT_SECRET, { expiresIn: "7d" });
 }
 
-async function issueEmailVerification(userId: string, email: string): Promise<{ debugToken?: string }> {
+async function issueEmailVerification(
+  userId: string,
+  email: string
+): Promise<{ debugToken?: string; sent: boolean; reason?: string }> {
   const verification = await createEmailVerificationToken(userId);
   const frontendBase = (env.FRONTEND_URL ?? env.BASE_URL ?? "http://localhost:8080").replace(/\/$/, "");
   const link = `${frontendBase}/verify-email?token=${encodeURIComponent(verification.token)}`;
+  let sent = false;
+  let reason: string | undefined;
   try {
-    await sendVerificationEmail({ to: email, verifyLink: link });
+    const result = await sendVerificationEmail({ to: email, verifyLink: link });
+    sent = result.sent;
+    if (!result.sent) {
+      reason = "SMTP is not configured.";
+    }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[auth] verification email failed for ${email}:`, msg);
+    reason = msg;
   }
   if (env.AUTH_DEV_LOG_VERIFICATION_LINK && env.NODE_ENV !== "production") {
     console.log(`[auth] verification link for ${email}: ${link}`);
   }
   if (env.AUTH_DEV_RETURN_VERIFICATION_TOKEN && env.NODE_ENV !== "production") {
-    return { debugToken: verification.token };
+    return { debugToken: verification.token, sent, reason };
   }
-  return {};
+  return { sent, reason };
 }
 
 authRouter.post("/register", async (req, res) => {
@@ -101,6 +111,8 @@ authRouter.post("/register", async (req, res) => {
     token,
     user: { id: user.id, email: user.email, emailVerified: false },
     requiresEmailVerification: true,
+    verificationEmailSent: verification.sent,
+    verificationEmailReason: verification.reason,
     verificationToken: verification.debugToken
   });
 });
@@ -128,7 +140,21 @@ authRouter.post("/login", async (req, res) => {
   }
 
   const token = signSessionToken(user.id);
-  res.json({ token, user: { id: user.id, email: user.email, emailVerified: Boolean(user.emailVerifiedAt) } });
+  const emailVerified = Boolean(user.emailVerifiedAt);
+  let verificationEmailSent: boolean | undefined;
+  let verificationEmailReason: string | undefined;
+  if (!emailVerified) {
+    const verification = await issueEmailVerification(user.id, user.email);
+    verificationEmailSent = verification.sent;
+    verificationEmailReason = verification.reason;
+  }
+  res.json({
+    token,
+    user: { id: user.id, email: user.email, emailVerified },
+    requiresEmailVerification: !emailVerified,
+    verificationEmailSent,
+    verificationEmailReason
+  });
 });
 
 authRouter.get("/me", requireAuth, async (req: AuthenticatedRequest, res) => {
@@ -165,7 +191,12 @@ authRouter.post("/verification/request", requireAuth, async (req: AuthenticatedR
     return;
   }
   const verification = await issueEmailVerification(user.id, user.email);
-  res.json({ sent: true, verificationToken: verification.debugToken });
+  res.json({
+    sent: verification.sent,
+    alreadyVerified: false,
+    reason: verification.reason,
+    verificationToken: verification.debugToken
+  });
 });
 
 authRouter.post("/logout", requireAuth, (_req, res) => {

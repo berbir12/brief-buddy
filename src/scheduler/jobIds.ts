@@ -9,5 +9,5 @@ function currentJobBucket(mode: BriefingMode, now: Date): string {
 }
 
 export function buildBriefingJobId(userId: string, mode: BriefingMode, now: Date = new Date()): string {
-  return `briefing:${userId}:${mode}:${currentJobBucket(mode, now)}`;
+  return `briefing-${userId}-${mode}-${currentJobBucket(mode, now)}`;
 }

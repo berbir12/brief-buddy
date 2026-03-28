@@ -45,6 +45,7 @@ export interface UserSettings {
   morningTime: string;
   eveningTime: string;
   newsKeywords: string[];
+  newsFeeds: string[];
   dealValueThreshold: number;
   urgencyKeywords: string[];
 }
@@ -325,6 +326,7 @@ export async function getUserSettings(userId: string): Promise<UserSettings> {
        morning_time AS "morningTime",
        evening_time AS "eveningTime",
        news_keywords AS "newsKeywords",
+       news_feeds AS "newsFeeds",
        deal_value_threshold::float AS "dealValueThreshold",
        urgency_keywords AS "urgencyKeywords"
      FROM settings
@@ -337,6 +339,11 @@ export async function getUserSettings(userId: string): Promise<UserSettings> {
       morningTime: "07:00",
       eveningTime: "18:00",
       newsKeywords: ["small business", "sales", "operations"],
+      newsFeeds: [
+        "https://feeds.feedburner.com/entrepreneur/latest",
+        "https://www.forbes.com/small-business/feed/",
+        "https://techcrunch.com/category/startups/feed/"
+      ],
       dealValueThreshold: 10000,
       urgencyKeywords: ["urgent", "asap", "invoice", "contract"]
     }

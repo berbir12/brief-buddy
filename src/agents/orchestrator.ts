@@ -4,6 +4,7 @@ import { fetchCrmDeals } from "./crmAgent";
 import { fetchEmailInsights } from "./emailAgent";
 import { fetchIndustryNews } from "./newsAgent";
 import { fetchSlackMessages } from "./slackAgent";
+import { env } from "../config/env";
 import {
   saveBriefingRecord,
   getUserProfile,
@@ -51,8 +52,10 @@ export async function runBriefingPipeline(
       "calendar-agent"
     ),
     withFallback(() => fetchSlackMessages(userId), [], "slack-agent"),
-    withFallback(() => fetchCrmDeals(), [], "crm-agent"),
-    withFallback(() => fetchIndustryNews(settings.newsKeywords), [], "news-agent")
+    withFallback(() => fetchCrmDeals(userId), [], "crm-agent"),
+    env.ENABLE_NEWS_AGENT
+      ? withFallback(() => fetchIndustryNews(settings.newsKeywords, settings.newsFeeds), [], "news-agent")
+      : Promise.resolve([])
   ]);
 
   if (emails.length === 0) failures.push("Email source unavailable or empty.");

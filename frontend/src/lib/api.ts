@@ -55,19 +55,35 @@ export function register(body: { email: string; password: string }): Promise<{
   token: string;
   user: AuthUser;
   requiresEmailVerification?: boolean;
+  verificationEmailSent?: boolean;
+  verificationEmailReason?: string;
 }> {
   return api<{
     token: string;
     user: AuthUser;
     requiresEmailVerification?: boolean;
+    verificationEmailSent?: boolean;
+    verificationEmailReason?: string;
   }>("/api/auth/register", {
     method: "POST",
     body: JSON.stringify(body),
   });
 }
 
-export function loginWithPassword(body: { email: string; password: string }): Promise<{ token: string; user: AuthUser }> {
-  return api<{ token: string; user: AuthUser }>("/api/auth/login", {
+export function loginWithPassword(body: { email: string; password: string }): Promise<{
+  token: string;
+  user: AuthUser;
+  requiresEmailVerification?: boolean;
+  verificationEmailSent?: boolean;
+  verificationEmailReason?: string;
+}> {
+  return api<{
+    token: string;
+    user: AuthUser;
+    requiresEmailVerification?: boolean;
+    verificationEmailSent?: boolean;
+    verificationEmailReason?: string;
+  }>("/api/auth/login", {
     method: "POST",
     body: JSON.stringify(body),
   });
@@ -81,8 +97,8 @@ export function logoutRequest(): Promise<void> {
   return api<void>("/api/auth/logout", { method: "POST" });
 }
 
-export function requestEmailVerification(): Promise<{ sent: boolean; alreadyVerified?: boolean }> {
-  return api<{ sent: boolean; alreadyVerified?: boolean }>("/api/auth/verification/request", {
+export function requestEmailVerification(): Promise<{ sent: boolean; alreadyVerified?: boolean; reason?: string }> {
+  return api<{ sent: boolean; alreadyVerified?: boolean; reason?: string }>("/api/auth/verification/request", {
     method: "POST",
   });
 }
@@ -164,6 +180,7 @@ export interface SettingsRow {
   morningTime: string;
   eveningTime: string;
   newsKeywords: string[];
+  newsFeeds: string[];
   dealValueThreshold: number;
   urgencyKeywords: string[];
 }
@@ -193,9 +210,32 @@ export function getIntegrationsDiagnostics(): Promise<{ generatedAt: string; int
   return api<{ generatedAt: string; integrations: IntegrationStatus[] }>("/api/settings/integrations/diagnostics");
 }
 
-export function disconnectIntegration(provider: "google" | "slack"): Promise<{ disconnected: boolean; integrations: IntegrationStatus[] }> {
+export function connectCrmIntegration(apiKey: string): Promise<{ connected: boolean; integrations: IntegrationStatus[] }> {
+  return api<{ connected: boolean; integrations: IntegrationStatus[] }>("/api/settings/integrations/crm", {
+    method: "PUT",
+    body: JSON.stringify({ apiKey }),
+  });
+}
+
+export function disconnectIntegration(provider: "google" | "slack" | "crm"): Promise<{ disconnected: boolean; integrations: IntegrationStatus[] }> {
   return api<{ disconnected: boolean; integrations: IntegrationStatus[] }>(`/api/settings/integrations/${provider}`, {
     method: "DELETE",
+  });
+}
+
+export function testIntegration(provider: "google" | "slack" | "crm" | "news"): Promise<{
+  ok: boolean;
+  provider: string;
+  message: string;
+  fetchedCount?: number;
+}> {
+  return api<{
+    ok: boolean;
+    provider: string;
+    message: string;
+    fetchedCount?: number;
+  }>(`/api/settings/integrations/${provider}/test`, {
+    method: "POST",
   });
 }
 

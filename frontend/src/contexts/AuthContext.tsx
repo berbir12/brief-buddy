@@ -25,7 +25,7 @@ type AuthContextValue = {
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string) => Promise<void>;
-  resendVerification: () => Promise<{ sent: boolean; alreadyVerified?: boolean; verificationToken?: string }>;
+  resendVerification: () => Promise<{ sent: boolean; alreadyVerified?: boolean; reason?: string; verificationToken?: string }>;
   loginDemo: () => Promise<void>;
   logout: () => Promise<void>;
 };

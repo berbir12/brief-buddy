@@ -4,19 +4,27 @@ import { withFallback, withTimeout } from "../utils/timeouts";
 
 const parser = new Parser();
 
-const DEFAULT_FEEDS = [
+export const DEFAULT_NEWS_FEEDS = [
   "https://feeds.feedburner.com/entrepreneur/latest",
   "https://www.forbes.com/small-business/feed/",
   "https://techcrunch.com/category/startups/feed/"
 ];
 
-export async function fetchIndustryNews(keywords: string[]): Promise<NewsHeadline[]> {
+function normalizeFeeds(feeds: string[] | undefined): string[] {
+  const cleaned = (feeds ?? []).map((feed) => feed.trim()).filter(Boolean);
+  return cleaned.length > 0 ? cleaned : DEFAULT_NEWS_FEEDS;
+}
+
+export async function fetchIndustryNews(keywords: string[], feeds?: string[]): Promise<NewsHeadline[]> {
   return withFallback(
     () =>
       withTimeout(
         (async () => {
-          const feeds = await Promise.all(DEFAULT_FEEDS.map((url) => parser.parseURL(url)));
-          const items = feeds.flatMap((f) => f.items ?? []);
+          const selectedFeeds = normalizeFeeds(feeds);
+          const feedResults = await Promise.allSettled(selectedFeeds.map((url) => parser.parseURL(url)));
+          const items = feedResults
+            .filter((result): result is PromiseFulfilledResult<Awaited<ReturnType<typeof parser.parseURL>>> => result.status === "fulfilled")
+            .flatMap((result) => result.value.items ?? []);
           const loweredKeywords = keywords.map((k) => k.toLowerCase());
 
           const relevant = items

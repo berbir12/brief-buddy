@@ -3,12 +3,14 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import {
+  connectCrmIntegration,
   disconnectIntegration,
   getBriefingJobEvents,
   getIntegrationsDiagnostics,
   getOAuthStartUrl,
   getSettings,
   getSystemHealth,
+  testIntegration,
   updateSettings
 } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
@@ -32,13 +34,17 @@ const SettingsPage = () => {
   const [speed, setSpeed] = useState(1.0);
   const [briefingLength, setBriefingLength] = useState("standard");
   const [newsKeywords, setNewsKeywords] = useState("");
+  const [newsFeeds, setNewsFeeds] = useState("");
   const [urgencyKeywords, setUrgencyKeywords] = useState("");
   const [dealValueThreshold, setDealValueThreshold] = useState(10000);
+  const [crmApiKey, setCrmApiKey] = useState("");
 
   const queryClient = useQueryClient();
-  const [connectingProvider, setConnectingProvider] = useState<"google" | "slack" | null>(null);
-  const [disconnectingProvider, setDisconnectingProvider] = useState<"google" | "slack" | null>(null);
+  const [connectingProvider, setConnectingProvider] = useState<"google" | "slack" | "crm" | null>(null);
+  const [disconnectingProvider, setDisconnectingProvider] = useState<"google" | "slack" | "crm" | null>(null);
+  const [testingProvider, setTestingProvider] = useState<"google" | "slack" | "crm" | "news" | null>(null);
   const [integrationError, setIntegrationError] = useState<string | null>(null);
+  const [integrationInfo, setIntegrationInfo] = useState<string | null>(null);
   const [verificationInfo, setVerificationInfo] = useState<string | null>(null);
   const { emailVerified, resendVerification } = useAuth();
 
@@ -71,6 +77,7 @@ const SettingsPage = () => {
       setMorningTime(settings.morningTime);
       setEveningTime(settings.eveningTime);
       setNewsKeywords(settings.newsKeywords?.join(", ") ?? "");
+      setNewsFeeds(settings.newsFeeds?.join("\n") ?? "");
       setUrgencyKeywords(settings.urgencyKeywords?.join(", ") ?? "");
       setDealValueThreshold(settings.dealValueThreshold ?? 10000);
     }
@@ -81,6 +88,7 @@ const SettingsPage = () => {
       morningTime?: string;
       eveningTime?: string;
       newsKeywords?: string[];
+      newsFeeds?: string[];
       urgencyKeywords?: string[];
       dealValueThreshold?: number;
     }) => updateSettings(payload),
@@ -137,11 +145,23 @@ const SettingsPage = () => {
       status: integrations.find((i) => i.provider === "slack"),
       provider: "slack" as const,
     },
-    { name: "HubSpot", icon: "🟠", status: null, provider: "crm" as const, comingSoon: true },
+    {
+      name: "HubSpot",
+      icon: "🟠",
+      status: integrations.find((i) => i.provider === "crm"),
+      provider: "crm" as const,
+    },
+    {
+      name: "News / RSS",
+      icon: "📰",
+      status: null,
+      provider: "news" as const,
+    },
   ];
 
   const connectIntegration = async (provider: "google" | "slack") => {
     setIntegrationError(null);
+    setIntegrationInfo(null);
     setConnectingProvider(provider);
     try {
       const { url } = await getOAuthStartUrl(provider);
@@ -155,6 +175,7 @@ const SettingsPage = () => {
 
   const handleDisconnect = async (provider: "google" | "slack") => {
     setIntegrationError(null);
+    setIntegrationInfo(null);
     setDisconnectingProvider(provider);
     try {
       await disconnectIntegration(provider);
@@ -166,6 +187,66 @@ const SettingsPage = () => {
     }
   };
 
+  const handleConnectCrm = async () => {
+    setIntegrationError(null);
+    setIntegrationInfo(null);
+    setConnectingProvider("crm");
+    try {
+      await connectCrmIntegration(crmApiKey.trim());
+      setCrmApiKey("");
+      setIntegrationInfo("HubSpot connected.");
+      await queryClient.invalidateQueries({ queryKey: ["integrations", "diagnostics"] });
+    } catch (error) {
+      setIntegrationError(error instanceof Error ? error.message : "Unable to connect HubSpot.");
+    } finally {
+      setConnectingProvider(null);
+    }
+  };
+
+  const handleDisconnectCrm = async () => {
+    setIntegrationError(null);
+    setIntegrationInfo(null);
+    setDisconnectingProvider("crm");
+    try {
+      await disconnectIntegration("crm");
+      setIntegrationInfo("HubSpot disconnected.");
+      await queryClient.invalidateQueries({ queryKey: ["integrations", "diagnostics"] });
+    } catch (error) {
+      setIntegrationError(error instanceof Error ? error.message : "Unable to disconnect HubSpot.");
+    } finally {
+      setDisconnectingProvider(null);
+    }
+  };
+
+  const handleTestIntegration = async (provider: "google" | "slack" | "crm" | "news") => {
+    setIntegrationError(null);
+    setIntegrationInfo(null);
+    setTestingProvider(provider);
+    try {
+      const result = await testIntegration(provider);
+      setIntegrationInfo(result.message);
+      if (provider !== "news") {
+        await queryClient.invalidateQueries({ queryKey: ["integrations", "diagnostics"] });
+      }
+    } catch (error) {
+      setIntegrationError(error instanceof Error ? error.message : `Unable to test ${provider} integration.`);
+    } finally {
+      setTestingProvider(null);
+    }
+  };
+
+  const saveNewsFeeds = () => {
+    setIntegrationError(null);
+    setIntegrationInfo(null);
+    updateMutation.mutate({
+      newsFeeds: newsFeeds.split("\n").map((f) => f.trim()).filter(Boolean),
+    }, {
+      onSuccess: () => {
+        setIntegrationInfo("RSS feed settings saved.");
+      }
+    });
+  };
+
   const handleResendVerification = async () => {
     setVerificationInfo(null);
     setIntegrationError(null);
@@ -173,6 +254,8 @@ const SettingsPage = () => {
       const result = await resendVerification();
       if (result.alreadyVerified) {
         setVerificationInfo("Email is already verified.");
+      } else if (!result.sent) {
+        setVerificationInfo(result.reason ? `Verification email not sent: ${result.reason}` : "Verification email was not sent.");
       } else {
         setVerificationInfo("Verification email sent. Check your inbox.");
       }
@@ -338,6 +421,11 @@ const SettingsPage = () => {
                 <p className="text-xs text-destructive">{integrationError}</p>
               </div>
             ) : null}
+            {integrationInfo ? (
+              <div className="card-surface p-4">
+                <p className="text-xs text-green-500">{integrationInfo}</p>
+              </div>
+            ) : null}
             {integrationList.map((item) => (
               <div key={item.name} className="card-surface p-4 flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -377,6 +465,13 @@ const SettingsPage = () => {
                           Disconnect
                         </button>
                       ) : null}
+                      <button
+                        onClick={() => void handleTestIntegration("google")}
+                        disabled={testingProvider === "google" || !item.status?.connected}
+                        className="text-xs font-medium px-3 py-1 rounded-full border border-border text-muted-foreground hover:text-foreground disabled:opacity-60"
+                      >
+                        Test
+                      </button>
                     </>
                   )}
                   {item.provider === "slack" && (
@@ -397,16 +492,101 @@ const SettingsPage = () => {
                           Disconnect
                         </button>
                       ) : null}
+                      <button
+                        onClick={() => void handleTestIntegration("slack")}
+                        disabled={testingProvider === "slack" || !item.status?.connected}
+                        className="text-xs font-medium px-3 py-1 rounded-full border border-border text-muted-foreground hover:text-foreground disabled:opacity-60"
+                      >
+                        Test
+                      </button>
                     </>
                   )}
                   {item.provider === "crm" && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted/10 text-muted-foreground border border-border">
-                      Coming Soon
-                    </span>
+                    <>
+                      {item.status?.connected ? (
+                        <>
+                          <button
+                            onClick={() => void handleDisconnectCrm()}
+                            disabled={disconnectingProvider === "crm"}
+                            className="text-xs font-medium px-3 py-1 rounded-full border border-border text-muted-foreground hover:text-foreground disabled:opacity-60"
+                          >
+                            Disconnect
+                          </button>
+                          <button
+                            onClick={() => void handleTestIntegration("crm")}
+                            disabled={testingProvider === "crm"}
+                            className="text-xs font-medium px-3 py-1 rounded-full border border-border text-muted-foreground hover:text-foreground disabled:opacity-60"
+                          >
+                            Test
+                          </button>
+                        </>
+                      ) : (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted/10 text-muted-foreground border border-border">
+                          Enter token below
+                        </span>
+                      )}
+                    </>
+                  )}
+                  {item.provider === "news" && (
+                    <button
+                      onClick={() => void handleTestIntegration("news")}
+                      disabled={testingProvider === "news"}
+                      className="text-xs font-medium px-3 py-1 rounded-full border border-border text-muted-foreground hover:text-foreground disabled:opacity-60"
+                    >
+                      Test
+                    </button>
                   )}
                 </div>
               </div>
             ))}
+            <div className="card-surface p-4 space-y-3">
+              <p className="text-sm font-medium text-foreground">HubSpot Private App Token</p>
+              <p className="text-xs text-muted-foreground">
+                Paste a HubSpot private app access token to enable CRM deal summaries.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  type="password"
+                  value={crmApiKey}
+                  onChange={(e) => setCrmApiKey(e.target.value)}
+                  placeholder="pat-na1-xxxxxxxx..."
+                  className="flex-1 bg-secondary border border-border rounded-lg px-3 py-2 text-sm text-foreground"
+                />
+                <button
+                  onClick={() => void handleConnectCrm()}
+                  disabled={connectingProvider === "crm" || crmApiKey.trim().length < 20}
+                  className="text-xs font-medium px-3 py-2 rounded-lg bg-accent text-accent-foreground hover:brightness-110 disabled:opacity-60"
+                >
+                  Connect HubSpot
+                </button>
+              </div>
+            </div>
+            <div className="card-surface p-4 space-y-3">
+              <p className="text-sm font-medium text-foreground">RSS Feed URLs</p>
+              <p className="text-xs text-muted-foreground">One feed URL per line. Used by the News integration.</p>
+              <textarea
+                value={newsFeeds}
+                onChange={(e) => setNewsFeeds(e.target.value)}
+                rows={4}
+                className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-sm text-foreground"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={saveNewsFeeds}
+                  disabled={updateMutation.isPending}
+                  className="text-xs font-medium px-3 py-2 rounded-lg bg-accent text-accent-foreground hover:brightness-110 disabled:opacity-60"
+                >
+                  Save RSS feeds
+                </button>
+                <button
+                  onClick={() => void handleTestIntegration("news")}
+                  disabled={testingProvider === "news"}
+                  className="text-xs font-medium px-3 py-2 rounded-lg border border-border text-muted-foreground hover:text-foreground disabled:opacity-60"
+                >
+                  Test RSS fetch
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
