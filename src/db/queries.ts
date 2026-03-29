@@ -23,6 +23,7 @@ export interface BriefingRecordInput {
   script: string;
   audioUrl?: string;
   deliveryStatus?: string;
+  deliveryDetail?: string | null;
 }
 
 export interface UserProfile {
@@ -85,12 +86,28 @@ export interface BriefingJobEventRow {
   createdAt: string;
 }
 
+export interface ReliabilityAlertRow {
+  id: string;
+  alertKey: string;
+  severity: string;
+  message: string;
+  source: string;
+  createdAt: string;
+}
+
 export interface BriefingMetricsRow {
   generated7d: number;
   delivered7d: number;
   undelivered7d: number;
   alerts7d: number;
   lastBriefingAt: string | null;
+}
+
+export interface BriefingFeedbackRow {
+  briefingId: string;
+  rating: -1 | 1;
+  note: string | null;
+  updatedAt: string;
 }
 
 export interface EmailVerificationRequest {
@@ -101,9 +118,9 @@ export interface EmailVerificationRequest {
 export async function saveBriefingRecord(input: BriefingRecordInput): Promise<string> {
   const id = randomUUID();
   await pool.query(
-    `INSERT INTO briefings (id, user_id, mode, script, audio_url, delivery_status)
-     VALUES ($1, $2, $3, $4, $5, $6)`,
-    [id, input.userId, input.mode, input.script, input.audioUrl ?? null, input.deliveryStatus ?? "pending"]
+    `INSERT INTO briefings (id, user_id, mode, script, audio_url, delivery_status, delivery_detail)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [id, input.userId, input.mode, input.script, input.audioUrl ?? null, input.deliveryStatus ?? "pending", input.deliveryDetail ?? null]
   );
   return id;
 }
@@ -112,9 +129,26 @@ export async function markBriefingDelivered(briefingId: string): Promise<void> {
   await pool.query(
     `UPDATE briefings
        SET delivery_status = 'delivered',
+           delivery_detail = NULL,
            delivered_at = NOW()
      WHERE id = $1`,
     [briefingId]
+  );
+}
+
+export async function updateBriefingDeliveryStatus(input: {
+  briefingId: string;
+  status: "delivered" | "sms-fallback" | "skipped" | "failed";
+  detail?: string | null;
+}): Promise<void> {
+  const deliveredAt = input.status === "delivered" ? "NOW()" : "delivered_at";
+  await pool.query(
+    `UPDATE briefings
+       SET delivery_status = $2,
+           delivery_detail = $3,
+           delivered_at = ${deliveredAt}
+     WHERE id = $1`,
+    [input.briefingId, input.status, input.detail ?? null]
   );
 }
 
@@ -122,6 +156,8 @@ export async function seedDemoUser(): Promise<string> {
   const email = "demo@voicebrief.local";
   const existing = await pool.query<{ id: string }>("SELECT id FROM users WHERE email = $1", [email]);
   if (existing.rows[0]?.id) {
+    // Keep demo user free of implicit delivery behavior unless explicitly configured.
+    await pool.query("UPDATE users SET phone = NULL WHERE id = $1", [existing.rows[0].id]);
     return existing.rows[0].id;
   }
 
@@ -129,7 +165,7 @@ export async function seedDemoUser(): Promise<string> {
   await pool.query(
     `INSERT INTO users (id, email, phone, timezone, eleven_labs_voice_id, email_verified_at)
      VALUES ($1, $2, $3, $4, $5, NOW())`,
-    [userId, email, "+15555550100", "America/New_York", env.ELEVENLABS_VOICE_ID ?? null]
+    [userId, email, null, "America/New_York", env.ELEVENLABS_VOICE_ID ?? null]
   );
 
   await pool.query(
@@ -190,13 +226,14 @@ export async function findAuthUserById(id: string): Promise<AuthUser | null> {
 export async function createUserAccount(input: {
   email: string;
   passwordHash: string;
+  phone?: string | null;
   timezone?: string;
 }): Promise<{ id: string; email: string }> {
   const userId = randomUUID();
   await pool.query(
-    `INSERT INTO users (id, email, password_hash, timezone)
-     VALUES ($1, $2, $3, $4)`,
-    [userId, input.email, input.passwordHash, input.timezone ?? "UTC"]
+    `INSERT INTO users (id, email, password_hash, phone, timezone)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [userId, input.email, input.passwordHash, input.phone ?? null, input.timezone ?? "UTC"]
   );
 
   await pool.query("INSERT INTO settings (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING", [userId]);
@@ -481,6 +518,73 @@ export async function listBriefingJobEvents(userId: string, limit = 50): Promise
     [userId, safeLimit]
   );
   return result.rows;
+}
+
+export async function createReliabilityAlertIfNeeded(input: {
+  userId: string;
+  alertKey: string;
+  message: string;
+  source: string;
+  severity?: "warning" | "critical";
+  dedupeMinutes?: number;
+}): Promise<boolean> {
+  const dedupeMinutes = Math.max(1, Math.min(input.dedupeMinutes ?? 180, 24 * 60));
+  const existing = await pool.query<{ id: string }>(
+    `SELECT id
+     FROM reliability_alerts
+     WHERE user_id = $1
+       AND alert_key = $2
+       AND created_at > NOW() - ($3::text || ' minutes')::interval
+     LIMIT 1`,
+    [input.userId, input.alertKey, String(dedupeMinutes)]
+  );
+  if (existing.rows[0]) {
+    return false;
+  }
+
+  await pool.query(
+    `INSERT INTO reliability_alerts (id, user_id, alert_key, severity, message, source)
+     VALUES ($1, $2, $3, $4, $5, $6)`,
+    [randomUUID(), input.userId, input.alertKey, input.severity ?? "warning", input.message.slice(0, 600), input.source]
+  );
+  return true;
+}
+
+export async function listReliabilityAlerts(userId: string, limit = 25): Promise<ReliabilityAlertRow[]> {
+  const safeLimit = Math.min(Math.max(limit, 1), 200);
+  const result = await pool.query<ReliabilityAlertRow>(
+    `SELECT
+       id,
+       alert_key AS "alertKey",
+       severity,
+       message,
+       source,
+       created_at AS "createdAt"
+     FROM reliability_alerts
+     WHERE user_id = $1
+     ORDER BY created_at DESC
+     LIMIT $2`,
+    [userId, safeLimit]
+  );
+  return result.rows;
+}
+
+export async function upsertBriefingFeedback(input: {
+  userId: string;
+  briefingId: string;
+  rating: -1 | 1;
+  note?: string;
+}): Promise<void> {
+  await pool.query(
+    `INSERT INTO briefing_feedback (id, briefing_id, user_id, rating, note, updated_at)
+     VALUES ($1, $2, $3, $4, $5, NOW())
+     ON CONFLICT (briefing_id, user_id)
+     DO UPDATE
+        SET rating = EXCLUDED.rating,
+            note = EXCLUDED.note,
+            updated_at = NOW()`,
+    [randomUUID(), input.briefingId, input.userId, input.rating, input.note?.trim() || null]
+  );
 }
 
 export async function getBriefingMetrics(userId: string): Promise<BriefingMetricsRow> {

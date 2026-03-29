@@ -40,8 +40,20 @@ CREATE TABLE IF NOT EXISTS briefings (
   script TEXT NOT NULL,
   audio_url TEXT,
   delivery_status TEXT NOT NULL DEFAULT 'pending',
+  delivery_detail TEXT,
   delivered_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS briefing_feedback (
+  id UUID PRIMARY KEY,
+  briefing_id UUID NOT NULL REFERENCES briefings(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  rating SMALLINT NOT NULL CHECK (rating IN (-1, 1)),
+  note TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (briefing_id, user_id)
 );
 
 CREATE TABLE IF NOT EXISTS tasks (
@@ -81,9 +93,22 @@ CREATE TABLE IF NOT EXISTS briefing_job_events (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS reliability_alerts (
+  id UUID PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  alert_key TEXT NOT NULL,
+  severity TEXT NOT NULL DEFAULT 'warning',
+  message TEXT NOT NULL,
+  source TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE INDEX IF NOT EXISTS idx_tasks_user_status ON tasks (user_id, status);
 CREATE INDEX IF NOT EXISTS idx_briefings_user_created ON briefings (user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_briefing_job_events_user_created ON briefing_job_events (user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_briefing_feedback_user_created ON briefing_feedback (user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_reliability_alerts_user_created ON reliability_alerts (user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_reliability_alerts_user_key ON reliability_alerts (user_id, alert_key, created_at DESC);
 
 ALTER TABLE users
   ADD COLUMN IF NOT EXISTS password_hash TEXT;
@@ -102,6 +127,9 @@ ALTER TABLE integrations
 
 ALTER TABLE integrations
   ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+ALTER TABLE briefings
+  ADD COLUMN IF NOT EXISTS delivery_detail TEXT;
 
 ALTER TABLE settings
   ADD COLUMN IF NOT EXISTS news_feeds TEXT[] NOT NULL DEFAULT ARRAY[

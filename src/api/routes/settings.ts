@@ -19,6 +19,9 @@ const settingsPatchSchema = z.object({
   dealValueThreshold: z.number().nonnegative().optional(),
   urgencyKeywords: z.array(z.string()).optional()
 });
+const profilePatchSchema = z.object({
+  phone: z.union([z.literal(""), z.string().regex(/^\+[1-9]\d{7,14}$/), z.null()]).optional()
+});
 const providerSchema = z.enum(["google", "slack", "crm"]);
 const integrationTestProviderSchema = z.enum(["google", "slack", "crm", "news"]);
 const crmConnectSchema = z.object({
@@ -28,6 +31,19 @@ const crmConnectSchema = z.object({
 settingsRouter.get("/", async (req: AuthenticatedRequest, res) => {
   const settings = await getUserSettings(req.user!.id);
   res.json(settings);
+});
+
+settingsRouter.get("/profile", async (req: AuthenticatedRequest, res) => {
+  const result = await pool.query<{ phone: string | null; timezone: string }>(
+    `SELECT phone, timezone FROM users WHERE id = $1`,
+    [req.user!.id]
+  );
+  const row = result.rows[0];
+  if (!row) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+  res.json(row);
 });
 
 settingsRouter.get("/integrations", async (req: AuthenticatedRequest, res) => {
@@ -172,4 +188,30 @@ settingsRouter.patch("/", async (req: AuthenticatedRequest, res) => {
   await registerSchedulesForUser(req.user!.id);
   const settings = await getUserSettings(req.user!.id);
   res.json(settings);
+});
+
+settingsRouter.patch("/profile", async (req: AuthenticatedRequest, res) => {
+  const parsed = profilePatchSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid profile payload" });
+    return;
+  }
+
+  const normalizedPhone =
+    parsed.data.phone === undefined || parsed.data.phone === null || parsed.data.phone.trim() === ""
+      ? null
+      : parsed.data.phone.trim();
+
+  const updated = await pool.query<{ phone: string | null; timezone: string }>(
+    `UPDATE users
+        SET phone = $2
+      WHERE id = $1
+      RETURNING phone, timezone`,
+    [req.user!.id, normalizedPhone]
+  );
+  if (!updated.rows[0]) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+  res.json(updated.rows[0]);
 });

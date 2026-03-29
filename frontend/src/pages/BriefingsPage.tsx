@@ -1,15 +1,23 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import ModeBadge from "@/components/ModeBadge";
 import AudioPlayer from "@/components/AudioPlayer";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp, RotateCcw, ThumbsDown, ThumbsUp } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getBriefingJobEvents, getBriefingsHistory, type BriefingJobEvent, type BriefingRow } from "@/lib/api";
+import {
+  getBriefingJobEvents,
+  getBriefingsHistory,
+  regenerateBriefing,
+  submitBriefingFeedback,
+  type BriefingJobEvent,
+  type BriefingRow
+} from "@/lib/api";
 
 type Mode = "morning" | "evening" | "alert" | "weekly";
 
 const BriefingsPage = () => {
+  const queryClient = useQueryClient();
   const [expanded, setExpanded] = useState<number | null>(null);
   const [filterMode, setFilterMode] = useState<string>("all");
 
@@ -28,6 +36,21 @@ const BriefingsPage = () => {
     filterMode === "all"
       ? briefings
       : briefings.filter((b) => b.mode === filterMode);
+
+  const feedbackMutation = useMutation({
+    mutationFn: ({ id, rating }: { id: string; rating: -1 | 1 }) => submitBriefingFeedback(id, { rating }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["briefings"] });
+    }
+  });
+
+  const regenerateMutation = useMutation({
+    mutationFn: (id: string) => regenerateBriefing(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["briefings"] });
+      queryClient.invalidateQueries({ queryKey: ["briefing-job-events"] });
+    }
+  });
 
   return (
     <div>
@@ -75,6 +98,9 @@ const BriefingsPage = () => {
                   <span className="text-xs text-green-500/80 hidden sm:inline capitalize">
                     {b.deliveryStatus}
                   </span>
+                  {b.deliveryDetail ? (
+                    <span className="text-xs text-muted-foreground hidden lg:inline truncate max-w-72">{b.deliveryDetail}</span>
+                  ) : null}
                 </div>
                 {expanded === i ? (
                   <ChevronUp className="w-4 h-4 text-muted-foreground" />
@@ -94,6 +120,38 @@ const BriefingsPage = () => {
                   {b.audioUrl && (
                     <AudioPlayer compact duration="—" src={b.audioUrl} />
                   )}
+                  <div className="mt-4 flex items-center gap-2">
+                    <button
+                      onClick={() => feedbackMutation.mutate({ id: b.id, rating: 1 })}
+                      disabled={feedbackMutation.isPending}
+                      className={cn(
+                        "px-2.5 py-1.5 rounded-full text-xs border border-border flex items-center gap-1",
+                        b.feedbackRating === 1 ? "text-green-500 border-green-500/40" : "text-muted-foreground"
+                      )}
+                    >
+                      <ThumbsUp className="w-3.5 h-3.5" />
+                      Helpful
+                    </button>
+                    <button
+                      onClick={() => feedbackMutation.mutate({ id: b.id, rating: -1 })}
+                      disabled={feedbackMutation.isPending}
+                      className={cn(
+                        "px-2.5 py-1.5 rounded-full text-xs border border-border flex items-center gap-1",
+                        b.feedbackRating === -1 ? "text-destructive border-destructive/40" : "text-muted-foreground"
+                      )}
+                    >
+                      <ThumbsDown className="w-3.5 h-3.5" />
+                      Needs work
+                    </button>
+                    <button
+                      onClick={() => regenerateMutation.mutate(b.id)}
+                      disabled={regenerateMutation.isPending}
+                      className="px-2.5 py-1.5 rounded-full text-xs border border-border text-muted-foreground flex items-center gap-1"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      Regenerate
+                    </button>
+                  </div>
                 </motion.div>
               )}
             </motion.div>

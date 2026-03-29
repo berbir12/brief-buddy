@@ -50,19 +50,24 @@ export async function deliverBriefingCall(
   userId: string,
   _briefingId?: string,
   topTasks: TopTask[] = []
-): Promise<{ status: "delivered" | "sms-fallback" | "skipped"; sid?: string }> {
+): Promise<{ status: "delivered" | "sms-fallback" | "skipped" | "failed"; sid?: string; detail?: string }> {
   const fromPhone = env.TWILIO_PHONE_NUMBER;
   if (!twilioClient || !fromPhone) {
     return { status: "skipped" };
   }
 
   if (!audioUrl) {
-    await twilioClient.messages.create({
-      to: toPhone,
-      from: fromPhone,
-      body: `VoiceBrief fallback transcript:\n\n${transcript}`
-    });
-    return { status: "sms-fallback" };
+    try {
+      await twilioClient.messages.create({
+        to: toPhone,
+        from: fromPhone,
+        body: `VoiceBrief fallback transcript:\n\n${transcript}`
+      });
+      return { status: "sms-fallback" };
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      return { status: "failed", detail: `SMS fallback failed: ${detail}` };
+    }
   }
 
   const twiml =
@@ -81,12 +86,18 @@ export async function deliverBriefingCall(
       "twilio-call-delivery"
     );
     return { status: "delivered", sid: call.sid };
-  } catch {
-    await twilioClient.messages.create({
-      to: toPhone,
-      from: fromPhone,
-      body: `VoiceBrief fallback transcript:\n\n${transcript}`
-    });
-    return { status: "sms-fallback" };
+  } catch (error) {
+    try {
+      await twilioClient.messages.create({
+        to: toPhone,
+        from: fromPhone,
+        body: `VoiceBrief fallback transcript:\n\n${transcript}`
+      });
+      return { status: "sms-fallback" };
+    } catch (smsError) {
+      const callDetail = error instanceof Error ? error.message : String(error);
+      const smsDetail = smsError instanceof Error ? smsError.message : String(smsError);
+      return { status: "failed", detail: `Call failed: ${callDetail}. SMS fallback failed: ${smsDetail}` };
+    }
   }
 }

@@ -8,9 +8,11 @@ import {
   getBriefingJobEvents,
   getIntegrationsDiagnostics,
   getOAuthStartUrl,
+  getProfileSettings,
   getSettings,
   getSystemHealth,
   testIntegration,
+  updateProfileSettings,
   updateSettings
 } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
@@ -37,6 +39,7 @@ const SettingsPage = () => {
   const [newsFeeds, setNewsFeeds] = useState("");
   const [urgencyKeywords, setUrgencyKeywords] = useState("");
   const [dealValueThreshold, setDealValueThreshold] = useState(10000);
+  const [phoneNumber, setPhoneNumber] = useState("");
   const [crmApiKey, setCrmApiKey] = useState("");
 
   const queryClient = useQueryClient();
@@ -46,11 +49,18 @@ const SettingsPage = () => {
   const [integrationError, setIntegrationError] = useState<string | null>(null);
   const [integrationInfo, setIntegrationInfo] = useState<string | null>(null);
   const [verificationInfo, setVerificationInfo] = useState<string | null>(null);
+  const [phoneInfo, setPhoneInfo] = useState<string | null>(null);
+  const [phoneError, setPhoneError] = useState<string | null>(null);
   const { emailVerified, resendVerification } = useAuth();
 
   const { data: settings } = useQuery({
     queryKey: ["settings"],
     queryFn: getSettings,
+  });
+
+  const { data: profile } = useQuery({
+    queryKey: ["profile-settings"],
+    queryFn: getProfileSettings,
   });
 
   const { data: integrationDiagnostics } = useQuery({
@@ -83,6 +93,12 @@ const SettingsPage = () => {
     }
   }, [settings]);
 
+  useEffect(() => {
+    if (profile) {
+      setPhoneNumber(profile.phone ?? "");
+    }
+  }, [profile]);
+
   const updateMutation = useMutation({
     mutationFn: (payload: {
       morningTime?: string;
@@ -99,6 +115,20 @@ const SettingsPage = () => {
 
   const saveSchedule = () => {
     updateMutation.mutate({ morningTime, eveningTime });
+  };
+
+  const savePhoneNumber = () => {
+    setPhoneInfo(null);
+    setPhoneError(null);
+    const trimmed = phoneNumber.trim();
+    updateProfileSettings({ phone: trimmed.length > 0 ? trimmed : null })
+      .then(() => {
+        setPhoneInfo(trimmed ? "Phone number saved." : "Phone number removed.");
+        queryClient.invalidateQueries({ queryKey: ["profile-settings"] });
+      })
+      .catch((error: unknown) => {
+        setPhoneError(error instanceof Error ? error.message : "Unable to save phone number.");
+      });
   };
 
   const saveUrgencyRules = () => {
@@ -333,7 +363,24 @@ const SettingsPage = () => {
             </div>
             <div className="card-surface p-6 space-y-4">
               <p className="text-sm font-medium text-foreground">Phone Number</p>
-              <p className="text-xs text-muted-foreground">Set in backend (demo user). Production: add phone field to profile.</p>
+              <p className="text-xs text-muted-foreground">Optional. Used for Twilio call delivery. Enter E.164 format (e.g. +15551234567).</p>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  type="tel"
+                  value={phoneNumber}
+                  onChange={(e) => setPhoneNumber(e.target.value)}
+                  placeholder="+15551234567"
+                  className="flex-1 bg-secondary border border-border rounded-lg px-3 py-2 text-sm text-foreground"
+                />
+                <button
+                  onClick={savePhoneNumber}
+                  className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50"
+                >
+                  Save phone
+                </button>
+              </div>
+              {phoneInfo ? <p className="text-xs text-green-500">{phoneInfo}</p> : null}
+              {phoneError ? <p className="text-xs text-destructive">{phoneError}</p> : null}
             </div>
           </>
         )}

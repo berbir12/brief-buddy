@@ -23,7 +23,9 @@ export const authRouter = Router();
 
 const authPayloadSchema = z.object({
   email: z.string().email().max(320),
-  password: z.string().min(10).max(128)
+  password: z.string().min(10).max(128),
+  // Optional E.164 phone number for call delivery setup at signup.
+  phone: z.string().regex(/^\+[1-9]\d{7,14}$/).optional()
 });
 const tokenPayloadSchema = z.object({
   token: z.string().min(32).max(200)
@@ -96,7 +98,8 @@ authRouter.post("/register", async (req, res) => {
 
   const user = await createUserAccount({
     email,
-    passwordHash: hashPassword(parsed.data.password)
+    passwordHash: hashPassword(parsed.data.password),
+    phone: parsed.data.phone ?? null
   });
   try {
     await registerSchedulesForUser(user.id);
@@ -303,7 +306,7 @@ authRouter.get("/slack/start", requireAuth, async (req: AuthenticatedRequest, re
   }
 
   const redirectUri = env.SLACK_REDIRECT_URI ?? "http://localhost:3000/api/auth/slack/callback";
-  const scope = [
+  const userScope = [
     "channels:history",
     "groups:history",
     "im:history",
@@ -314,7 +317,8 @@ authRouter.get("/slack/start", requireAuth, async (req: AuthenticatedRequest, re
   ].join(",");
 
   const state = jwt.sign({ sub: userId, provider: "slack" }, env.JWT_SECRET, { expiresIn: "10m" });
-  const url = `https://slack.com/oauth/v2/authorize?client_id=${encodeURIComponent(env.SLACK_CLIENT_ID)}&scope=${encodeURIComponent(scope)}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${encodeURIComponent(state)}`;
+  // Use user scopes so install works without requiring a bot user.
+  const url = `https://slack.com/oauth/v2/authorize?client_id=${encodeURIComponent(env.SLACK_CLIENT_ID)}&user_scope=${encodeURIComponent(userScope)}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${encodeURIComponent(state)}`;
   res.json({ url });
 });
 
@@ -354,21 +358,29 @@ authRouter.get("/slack/callback", async (req, res) => {
     headers: { "Content-Type": "application/x-www-form-urlencoded" }
   });
 
-  if (!response.data?.ok || !response.data?.access_token) {
+  const accessToken =
+    (response.data?.authed_user?.access_token as string | undefined) ??
+    (response.data?.access_token as string | undefined);
+  if (!response.data?.ok || !accessToken) {
     res.status(400).json({ error: "Slack token exchange failed", detail: response.data });
     return;
   }
 
   const expiresAt =
-    typeof response.data.expires_in === "number"
-      ? new Date(Date.now() + response.data.expires_in * 1000)
+    typeof response.data.authed_user?.expires_in === "number"
+      ? new Date(Date.now() + response.data.authed_user.expires_in * 1000)
+      : typeof response.data.expires_in === "number"
+        ? new Date(Date.now() + response.data.expires_in * 1000)
       : null;
+  const refreshToken =
+    (response.data?.authed_user?.refresh_token as string | undefined) ??
+    (response.data?.refresh_token as string | undefined);
 
   await upsertIntegration({
     userId,
     provider: "slack",
-    accessToken: String(response.data.access_token),
-    refreshToken: response.data.refresh_token ? String(response.data.refresh_token) : null,
+    accessToken,
+    refreshToken: refreshToken ?? null,
     expiresAt
   });
 

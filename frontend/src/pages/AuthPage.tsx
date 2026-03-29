@@ -11,6 +11,7 @@ export default function AuthPage() {
   const [mode, setMode] = useState<AuthMode>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [phone, setPhone] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -32,7 +33,7 @@ export default function AuthPage() {
       if (mode === "login") {
         await login(email, password);
       } else {
-        await register(email, password);
+        await register(email, password, phone.trim() || undefined);
       }
       navigate(redirectPath, { replace: true });
     } catch (submitError) {
@@ -117,6 +118,25 @@ export default function AuthPage() {
             />
             <p className="text-xs text-muted-foreground">Use at least 10 characters with upper/lowercase and a number.</p>
           </div>
+
+          {mode === "register" ? (
+            <div className="space-y-1">
+              <label htmlFor="phone" className="text-sm text-muted-foreground">
+                Phone (optional)
+              </label>
+              <input
+                id="phone"
+                type="tel"
+                autoComplete="tel"
+                inputMode="tel"
+                placeholder="+15551234567"
+                value={phone}
+                onChange={(event) => setPhone(event.target.value)}
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40"
+              />
+              <p className="text-xs text-muted-foreground">Use E.164 format if provided (example: +15551234567).</p>
+            </div>
+          ) : null}
 
           {error ? (
             <p className="text-sm text-destructive">{error}</p>

@@ -1,13 +1,27 @@
 import { Router } from "express";
 import { z } from "zod";
 import { briefingQueue, buildBriefingJobId } from "../../scheduler/queue";
-import { getBriefingMetrics, getIntegrationsStatus, listBriefingJobEvents, pool } from "../../db/queries";
+import {
+  getBriefingMetrics,
+  getIntegrationsStatus,
+  getUserSchedule,
+  listBriefingJobEvents,
+  listReliabilityAlerts,
+  pool,
+  upsertBriefingFeedback
+} from "../../db/queries";
 import { AuthenticatedRequest, requireAuth } from "../middleware/auth";
 import { runBriefingPipeline } from "../../agents/orchestrator";
 
 export const briefingsRouter = Router();
 const modeSchema = z.enum(["morning", "evening", "weekly", "alert"]);
 const eventLimitSchema = z.coerce.number().int().min(1).max(200).optional();
+const reliabilityLimitSchema = z.coerce.number().int().min(1).max(200).optional();
+const briefingIdParamSchema = z.string().uuid();
+const feedbackSchema = z.object({
+  rating: z.union([z.literal(-1), z.literal(1)]),
+  note: z.string().max(500).optional()
+});
 
 async function getUserQueueStats(userId: string): Promise<{
   waiting: number;
@@ -83,10 +97,23 @@ briefingsRouter.post("/enqueue", requireAuth, async (req: AuthenticatedRequest, 
 
 briefingsRouter.get("/history", requireAuth, async (req: AuthenticatedRequest, res) => {
   const result = await pool.query(
-    `SELECT id, mode, script, audio_url AS "audioUrl", delivery_status AS "deliveryStatus", delivered_at AS "deliveredAt", created_at AS "createdAt"
-     FROM briefings
-     WHERE user_id = $1
-     ORDER BY created_at DESC
+    `SELECT
+       b.id,
+       b.mode,
+       b.script,
+       b.audio_url AS "audioUrl",
+       b.delivery_status AS "deliveryStatus",
+       b.delivery_detail AS "deliveryDetail",
+       b.delivered_at AS "deliveredAt",
+       b.created_at AS "createdAt",
+       bf.rating AS "feedbackRating",
+       bf.note AS "feedbackNote"
+     FROM briefings b
+     LEFT JOIN briefing_feedback bf
+       ON bf.briefing_id = b.id
+      AND bf.user_id = b.user_id
+     WHERE b.user_id = $1
+     ORDER BY b.created_at DESC
      LIMIT 50`,
     [req.user!.id]
   );
@@ -112,6 +139,16 @@ briefingsRouter.get("/jobs/events", requireAuth, async (req: AuthenticatedReques
   }
   const events = await listBriefingJobEvents(userId, parsedLimit.data ?? 50);
   res.json(events);
+});
+
+briefingsRouter.get("/reliability-alerts", requireAuth, async (req: AuthenticatedRequest, res) => {
+  const parsedLimit = reliabilityLimitSchema.safeParse(req.query.limit);
+  if (!parsedLimit.success && req.query.limit !== undefined) {
+    res.status(400).json({ error: "Invalid limit query param" });
+    return;
+  }
+  const alerts = await listReliabilityAlerts(req.user!.id, parsedLimit.data ?? 25);
+  res.json(alerts);
 });
 
 briefingsRouter.get("/jobs/queue-stats", requireAuth, async (req: AuthenticatedRequest, res) => {
@@ -160,5 +197,71 @@ briefingsRouter.get("/system-health", requireAuth, async (req: AuthenticatedRequ
     queue,
     integrations,
     warnings
+  });
+});
+
+briefingsRouter.post("/:id/feedback", requireAuth, async (req: AuthenticatedRequest, res) => {
+  const parsedId = briefingIdParamSchema.safeParse(req.params.id);
+  if (!parsedId.success) {
+    res.status(400).json({ error: "Invalid briefing id" });
+    return;
+  }
+  const parsedBody = feedbackSchema.safeParse(req.body);
+  if (!parsedBody.success) {
+    res.status(400).json({ error: "Invalid feedback payload" });
+    return;
+  }
+
+  const ownership = await pool.query<{ id: string }>(
+    `SELECT id FROM briefings WHERE id = $1 AND user_id = $2`,
+    [parsedId.data, req.user!.id]
+  );
+  if (!ownership.rows[0]) {
+    res.status(404).json({ error: "Briefing not found" });
+    return;
+  }
+
+  await upsertBriefingFeedback({
+    userId: req.user!.id,
+    briefingId: parsedId.data,
+    rating: parsedBody.data.rating,
+    note: parsedBody.data.note
+  });
+  res.json({ saved: true });
+});
+
+briefingsRouter.post("/:id/regenerate", requireAuth, async (req: AuthenticatedRequest, res) => {
+  const parsedId = briefingIdParamSchema.safeParse(req.params.id);
+  if (!parsedId.success) {
+    res.status(400).json({ error: "Invalid briefing id" });
+    return;
+  }
+  const existing = await pool.query<{ mode: "morning" | "evening" | "weekly" | "alert" }>(
+    `SELECT mode FROM briefings WHERE id = $1 AND user_id = $2`,
+    [parsedId.data, req.user!.id]
+  );
+  const row = existing.rows[0];
+  if (!row) {
+    res.status(404).json({ error: "Briefing not found" });
+    return;
+  }
+
+  const regenerated = await runBriefingPipeline(req.user!.id, row.mode);
+  res.json(regenerated);
+});
+
+briefingsRouter.get("/jobs/schedule-preview", requireAuth, async (req: AuthenticatedRequest, res) => {
+  const schedule = await getUserSchedule(req.user!.id);
+  if (!schedule) {
+    res.status(404).json({ error: "Schedule not found for user" });
+    return;
+  }
+
+  res.json({
+    timezone: schedule.timezone || "UTC",
+    morning: schedule.morningTime,
+    evening: schedule.eveningTime,
+    weekly: schedule.eveningTime,
+    urgencyWatcherMinutes: 15
   });
 });

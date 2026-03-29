@@ -18,6 +18,7 @@ import { registerWeeklyRecapJob } from "./scheduler/weeklyRecap";
 import { registerUrgencyWatcherJob } from "./scheduler/urgencyWatcher";
 import { createBriefingWorker } from "./scheduler/worker";
 import { briefingQueue } from "./scheduler/queue";
+import { runReliabilityHealthChecks } from "./scheduler/healthMonitor";
 
 async function bootstrap(): Promise<void> {
   await initializeDatabase();
@@ -31,6 +32,7 @@ async function bootstrap(): Promise<void> {
   ]);
 
   const worker = createBriefingWorker();
+  let healthMonitorHandle: NodeJS.Timeout | null = null;
   worker.on("failed", (job, err) => {
     const attempts = job?.attemptsMade ?? 0;
     console.error(`Worker failed for job ${job?.id} (attempt ${attempts}):`, err.message);
@@ -38,6 +40,21 @@ async function bootstrap(): Promise<void> {
   worker.on("completed", (job) => {
     console.log(`Worker completed job ${job.id}`);
   });
+
+  // Background reliability checks create actionable alerts for operators.
+  const runHealthChecksSafely = async () => {
+    try {
+      await runReliabilityHealthChecks();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("[health-monitor] check failed:", message);
+    }
+  };
+  await runHealthChecksSafely();
+  healthMonitorHandle = setInterval(() => {
+    void runHealthChecksSafely();
+  }, 5 * 60 * 1000);
+  healthMonitorHandle.unref();
 
   const app = express();
   let shuttingDown = false;
@@ -126,6 +143,9 @@ async function bootstrap(): Promise<void> {
       briefingQueue.close(),
       pool.end()
     ]);
+    if (healthMonitorHandle) {
+      clearInterval(healthMonitorHandle);
+    }
     console.log("Shutdown complete.");
     process.exit(0);
   }

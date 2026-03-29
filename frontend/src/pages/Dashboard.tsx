@@ -4,11 +4,15 @@ import { motion } from "framer-motion";
 import { Clock, CheckCircle, AlertTriangle, TrendingUp, Play, Loader2 } from "lucide-react";
 import AudioPlayer from "@/components/AudioPlayer";
 import PriorityBadge from "@/components/PriorityBadge";
+import { cn } from "@/lib/utils";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   getSettings,
   getTasks,
   getBriefingsHistory,
   getIntegrations,
+  getSchedulePreview,
+  getReliabilityAlerts,
   getBriefingMetrics,
   getSystemHealth,
   triggerBriefing,
@@ -31,6 +35,7 @@ function formatNextBriefing(morningTime: string): string {
 
 const Dashboard = () => {
   const queryClient = useQueryClient();
+  const { emailVerified } = useAuth();
 
   const { data: settings, isLoading: settingsLoading } = useQuery({
     queryKey: ["settings"],
@@ -61,6 +66,18 @@ const Dashboard = () => {
   const { data: systemHealth, isLoading: systemHealthLoading } = useQuery({
     queryKey: ["system-health"],
     queryFn: getSystemHealth,
+    refetchInterval: 60_000,
+  });
+
+  const { data: schedulePreview, isLoading: scheduleLoading } = useQuery({
+    queryKey: ["schedule-preview"],
+    queryFn: getSchedulePreview,
+    refetchInterval: 60_000,
+  });
+
+  const { data: reliabilityAlerts = [], isLoading: alertsLoading } = useQuery({
+    queryKey: ["reliability-alerts"],
+    queryFn: () => getReliabilityAlerts(10),
     refetchInterval: 60_000,
   });
 
@@ -132,6 +149,16 @@ const Dashboard = () => {
   ];
 
   const briefingPreview = lastBriefing?.script?.slice(0, 200) ?? "No briefing yet. Trigger one to hear your summary.";
+  const hasGoogle = integrations.some((i) => i.provider === "google" && i.connected);
+  const hasSlack = integrations.some((i) => i.provider === "slack" && i.connected);
+  const hasRssFeeds = Boolean(settings?.newsFeeds?.length);
+  const launchChecklist = [
+    { label: "Verify account email", done: emailVerified },
+    { label: "Connect Google", done: hasGoogle },
+    { label: "Connect Slack", done: hasSlack },
+    { label: "Configure RSS feeds", done: hasRssFeeds },
+    { label: "Generate first briefing", done: Boolean(lastBriefing) }
+  ];
 
   return (
     <div>
@@ -310,6 +337,23 @@ const Dashboard = () => {
         {integrationsLoading && <span className="text-xs text-muted-foreground">Loading…</span>}
       </div>
 
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.65 }}
+        className="card-surface p-6 mt-6"
+      >
+        <h2 className="text-sm font-semibold text-foreground mb-3">Launch Checklist</h2>
+        <div className="grid sm:grid-cols-2 gap-2">
+          {launchChecklist.map((item) => (
+            <p key={item.label} className="text-xs text-muted-foreground flex items-center gap-2">
+              <span className={`w-1.5 h-1.5 rounded-full ${item.done ? "bg-green-500" : "bg-muted-foreground/30"}`} />
+              {item.label}
+            </p>
+          ))}
+        </div>
+      </motion.div>
+
       {/* System health */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -353,6 +397,40 @@ const Dashboard = () => {
             ) : (
               <p className="text-xs text-green-500">No active reliability warnings.</p>
             )}
+            <div className="mt-4 pt-4 border-t border-border/40">
+              <h3 className="text-xs font-semibold text-foreground mb-2">Reliability Alerts</h3>
+              {alertsLoading ? (
+                <p className="text-xs text-muted-foreground">Loading reliability alerts…</p>
+              ) : reliabilityAlerts.length === 0 ? (
+                <p className="text-xs text-muted-foreground">No recent reliability alerts.</p>
+              ) : (
+                <div className="space-y-1">
+                  {reliabilityAlerts.slice(0, 5).map((alert) => (
+                    <p
+                      key={alert.id}
+                      className={cn(
+                        "text-xs",
+                        alert.severity === "critical" ? "text-destructive" : "text-orange-400"
+                      )}
+                    >
+                      {alert.message} ({new Date(alert.createdAt).toLocaleString()})
+                    </p>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="mt-4 pt-4 border-t border-border/40">
+              <h3 className="text-xs font-semibold text-foreground mb-2">Automation Schedule</h3>
+              {scheduleLoading ? (
+                <p className="text-xs text-muted-foreground">Loading schedule preview…</p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  TZ: {schedulePreview?.timezone ?? "UTC"} · Morning {schedulePreview?.morning ?? "—"} · Evening{" "}
+                  {schedulePreview?.evening ?? "—"} · Weekly {schedulePreview?.weekly ?? "—"} · Alert watcher every{" "}
+                  {schedulePreview?.urgencyWatcherMinutes ?? 15} minutes
+                </p>
+              )}
+            </div>
           </>
         )}
       </motion.div>

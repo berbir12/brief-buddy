@@ -50,12 +50,36 @@ if (!parsed.success) {
   throw new Error(`Invalid environment configuration:\n${missing.join("\n")}`);
 }
 
+function isHttpsUrl(value: string | undefined): boolean {
+  if (!value) return false;
+  try {
+    return new URL(value).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 if (parsed.data.NODE_ENV === "production") {
   if (!parsed.data.BASE_URL) {
     throw new Error("Invalid environment configuration:\nBASE_URL is required in production");
   }
   if (parsed.data.JWT_SECRET.length < 16 || parsed.data.JWT_SECRET === "change-me") {
     throw new Error("Invalid environment configuration:\nJWT_SECRET must be strong in production");
+  }
+  if (!isHttpsUrl(parsed.data.BASE_URL)) {
+    throw new Error("Invalid environment configuration:\nBASE_URL must use https in production");
+  }
+  if (!parsed.data.FRONTEND_URL || !isHttpsUrl(parsed.data.FRONTEND_URL)) {
+    throw new Error("Invalid environment configuration:\nFRONTEND_URL must use https in production");
+  }
+  if (!parsed.data.GOOGLE_REDIRECT_URI || !isHttpsUrl(parsed.data.GOOGLE_REDIRECT_URI)) {
+    throw new Error("Invalid environment configuration:\nGOOGLE_REDIRECT_URI must use https in production");
+  }
+  if (!parsed.data.SLACK_REDIRECT_URI || !isHttpsUrl(parsed.data.SLACK_REDIRECT_URI)) {
+    throw new Error("Invalid environment configuration:\nSLACK_REDIRECT_URI must use https in production");
+  }
+  if (parsed.data.AUTH_DEV_LOG_VERIFICATION_LINK || parsed.data.AUTH_DEV_RETURN_VERIFICATION_TOKEN) {
+    throw new Error("Invalid environment configuration:\nDisable AUTH_DEV_* flags in production");
   }
 }
 

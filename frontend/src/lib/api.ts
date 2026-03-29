@@ -51,7 +51,7 @@ export interface AuthUser {
   emailVerified: boolean;
 }
 
-export function register(body: { email: string; password: string }): Promise<{
+export function register(body: { email: string; password: string; phone?: string }): Promise<{
   token: string;
   user: AuthUser;
   requiresEmailVerification?: boolean;
@@ -121,8 +121,11 @@ export interface BriefingRow {
   script: string;
   audioUrl: string | null;
   deliveryStatus: string;
+  deliveryDetail: string | null;
   deliveredAt: string | null;
   createdAt: string;
+  feedbackRating?: -1 | 1 | null;
+  feedbackNote?: string | null;
 }
 
 export function getBriefingsHistory(): Promise<BriefingRow[]> {
@@ -133,6 +136,22 @@ export function triggerBriefing(mode: string): Promise<{ briefingId: string; scr
   return api("/api/briefings/trigger", {
     method: "POST",
     body: JSON.stringify({ mode: mode || "morning" }),
+  });
+}
+
+export function regenerateBriefing(briefingId: string): Promise<{ briefingId: string; script: string; audioUrl: string | null }> {
+  return api(`/api/briefings/${encodeURIComponent(briefingId)}/regenerate`, {
+    method: "POST",
+  });
+}
+
+export function submitBriefingFeedback(
+  briefingId: string,
+  body: { rating: -1 | 1; note?: string }
+): Promise<{ saved: boolean }> {
+  return api<{ saved: boolean }>(`/api/briefings/${encodeURIComponent(briefingId)}/feedback`, {
+    method: "POST",
+    body: JSON.stringify(body),
   });
 }
 
@@ -185,12 +204,25 @@ export interface SettingsRow {
   urgencyKeywords: string[];
 }
 
+export interface ProfileSettingsRow {
+  phone: string | null;
+  timezone: string;
+}
+
 export function getSettings(): Promise<SettingsRow> {
   return api<SettingsRow>("/api/settings");
 }
 
 export function updateSettings(body: Partial<SettingsRow>): Promise<SettingsRow> {
   return api<SettingsRow>("/api/settings", { method: "PATCH", body: JSON.stringify(body) });
+}
+
+export function getProfileSettings(): Promise<ProfileSettingsRow> {
+  return api<ProfileSettingsRow>("/api/settings/profile");
+}
+
+export function updateProfileSettings(body: { phone?: string | null }): Promise<ProfileSettingsRow> {
+  return api<ProfileSettingsRow>("/api/settings/profile", { method: "PATCH", body: JSON.stringify(body) });
 }
 
 export interface IntegrationStatus {
@@ -257,12 +289,41 @@ export interface BriefingJobEvent {
   createdAt: string;
 }
 
+export interface ReliabilityAlert {
+  id: string;
+  alertKey: string;
+  severity: string;
+  message: string;
+  source: string;
+  createdAt: string;
+}
+
 export function getBriefingMetrics(): Promise<BriefingMetrics> {
   return api<BriefingMetrics>("/api/briefings/metrics");
 }
 
 export function getBriefingJobEvents(limit = 50): Promise<BriefingJobEvent[]> {
   return api<BriefingJobEvent[]>(`/api/briefings/jobs/events?limit=${encodeURIComponent(String(limit))}`);
+}
+
+export function getReliabilityAlerts(limit = 25): Promise<ReliabilityAlert[]> {
+  return api<ReliabilityAlert[]>(`/api/briefings/reliability-alerts?limit=${encodeURIComponent(String(limit))}`);
+}
+
+export function getSchedulePreview(): Promise<{
+  timezone: string;
+  morning: string;
+  evening: string;
+  weekly: string;
+  urgencyWatcherMinutes: number;
+}> {
+  return api<{
+    timezone: string;
+    morning: string;
+    evening: string;
+    weekly: string;
+    urgencyWatcherMinutes: number;
+  }>("/api/briefings/jobs/schedule-preview");
 }
 
 export interface SystemHealth {

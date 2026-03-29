@@ -9,8 +9,8 @@ import {
   saveBriefingRecord,
   getUserProfile,
   getUserSettings,
-  markBriefingDelivered,
-  canSendAlertNow
+  canSendAlertNow,
+  updateBriefingDeliveryStatus
 } from "../db/queries";
 import { scorePriorities } from "../tasks/priorityScorer";
 import { extractAndStoreTasks } from "../tasks/extractAndStore";
@@ -97,9 +97,25 @@ export async function runBriefingPipeline(
   const topTasks = await getTopOpenTasks(userId, 3);
   if (profile?.phone) {
     const delivery = await deliverBriefingCall(profile.phone, audioUrl, script, userId, briefingId, topTasks);
-    if (delivery.status === "delivered") {
-      await markBriefingDelivered(briefingId);
-    }
+    const detail =
+      delivery.status === "sms-fallback"
+        ? "Call delivery failed; transcript sent by SMS fallback."
+        : delivery.status === "skipped"
+          ? "Voice delivery skipped because Twilio is not configured."
+          : delivery.status === "failed"
+            ? delivery.detail ?? "Voice and SMS delivery failed."
+            : null;
+    await updateBriefingDeliveryStatus({
+      briefingId,
+      status: delivery.status,
+      detail
+    });
+  } else {
+    await updateBriefingDeliveryStatus({
+      briefingId,
+      status: "skipped",
+      detail: "No phone number configured for this user."
+    });
   }
 
   return { briefingId, script, audioUrl };

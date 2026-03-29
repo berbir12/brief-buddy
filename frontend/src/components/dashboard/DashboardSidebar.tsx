@@ -21,6 +21,8 @@ const navItems = [
 const DashboardSidebar = () => {
   const location = useLocation();
   const { logout, email } = useAuth();
+  const displayName = email ? email.split("@")[0] : "User";
+  const initials = displayName.slice(0, 2).toUpperCase();
 
   return (
     <>
@@ -59,10 +61,10 @@ const DashboardSidebar = () => {
         <div className="p-4 border-t border-sidebar-border flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
             <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary flex-shrink-0">
-              VB
+              {initials}
             </div>
             <div className="min-w-0">
-              <p className="text-sm font-medium text-foreground truncate">Demo User</p>
+              <p className="text-sm font-medium text-foreground truncate">{displayName}</p>
               <p className="text-xs text-muted-foreground truncate">{email ?? "Brief Buddy"}</p>
             </div>
           </div>
