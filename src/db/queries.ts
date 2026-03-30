@@ -324,6 +324,11 @@ export async function verifyEmailWithToken(token: string): Promise<{ userId: str
   }
 }
 
+export async function getUserEmail(userId: string): Promise<string | null> {
+  const result = await pool.query<{ email: string }>("SELECT email FROM users WHERE id = $1", [userId]);
+  return result.rows[0]?.email ?? null;
+}
+
 export async function listUserIds(): Promise<string[]> {
   const result = await pool.query<{ id: string }>("SELECT id FROM users");
   return result.rows.map((r) => r.id);

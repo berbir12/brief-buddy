@@ -5,12 +5,33 @@ import {
   listBriefingJobEvents,
   listUserIds
 } from "../db/queries";
+import { sendAlertNotification } from "../notifications/alertNotifier";
 import { briefingQueue } from "./queue";
 
 function isRecent(isoDate: string, maxAgeMs: number): boolean {
   const parsed = Date.parse(isoDate);
   if (Number.isNaN(parsed)) return false;
   return Date.now() - parsed <= maxAgeMs;
+}
+
+async function raiseAlert(input: {
+  userId: string;
+  alertKey: string;
+  severity: "warning" | "critical";
+  message: string;
+  source: string;
+  dedupeMinutes: number;
+}): Promise<void> {
+  const isNew = await createReliabilityAlertIfNeeded(input);
+  if (isNew) {
+    await sendAlertNotification({
+      userId: input.userId,
+      alertKey: input.alertKey,
+      severity: input.severity,
+      message: input.message,
+      source: input.source
+    });
+  }
 }
 
 export async function runReliabilityHealthChecks(): Promise<void> {
@@ -24,7 +45,7 @@ export async function runReliabilityHealthChecks(): Promise<void> {
 
     for (const integration of integrations) {
       if (integration.requiresReconnect) {
-        await createReliabilityAlertIfNeeded({
+        await raiseAlert({
           userId,
           alertKey: `reconnect-${integration.provider}`,
           source: "integrations",
@@ -35,9 +56,11 @@ export async function runReliabilityHealthChecks(): Promise<void> {
       }
     }
 
-    const failedLast6h = events.filter((event) => event.eventType === "failed" && isRecent(event.createdAt, 6 * 60 * 60 * 1000)).length;
+    const failedLast6h = events.filter(
+      (event) => event.eventType === "failed" && isRecent(event.createdAt, 6 * 60 * 60 * 1000)
+    ).length;
     if (failedLast6h >= 3) {
-      await createReliabilityAlertIfNeeded({
+      await raiseAlert({
         userId,
         alertKey: "job-failures-6h",
         source: "worker",
@@ -48,7 +71,7 @@ export async function runReliabilityHealthChecks(): Promise<void> {
     }
 
     if (metrics.undelivered7d >= 3) {
-      await createReliabilityAlertIfNeeded({
+      await raiseAlert({
         userId,
         alertKey: "undelivered-7d",
         source: "delivery",
@@ -64,7 +87,7 @@ export async function runReliabilityHealthChecks(): Promise<void> {
     ]);
     const backlog = [...waitingJobs, ...delayedJobs].filter((job) => String(job.data?.userId ?? "") === userId).length;
     if (backlog >= 10) {
-      await createReliabilityAlertIfNeeded({
+      await raiseAlert({
         userId,
         alertKey: "queue-backlog",
         source: "queue",

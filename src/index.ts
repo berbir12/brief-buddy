@@ -58,7 +58,15 @@ async function bootstrap(): Promise<void> {
 
   const app = express();
   let shuttingDown = false;
-  app.use(cors());
+  app.use(
+    cors({
+      origin:
+        env.NODE_ENV === "production"
+          ? (env.FRONTEND_URL ?? false)
+          : true,
+      credentials: true
+    })
+  );
   app.use(helmet());
   app.use(morgan("dev"));
   app.use(express.json({ limit: "1mb" }));

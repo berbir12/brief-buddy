@@ -313,7 +313,9 @@ authRouter.get("/slack/start", requireAuth, async (req: AuthenticatedRequest, re
     "users:read",
     "channels:read",
     "groups:read",
-    "im:read"
+    "im:read",
+    "im:write",
+    "chat:write"
   ].join(",");
 
   const state = jwt.sign({ sub: userId, provider: "slack" }, env.JWT_SECRET, { expiresIn: "10m" });

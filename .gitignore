@@ -40,3 +40,5 @@ temp/
 # Optional
 *.tsbuildinfo
 .env.example
+docs/PRODUCTION_READINESS.md
+.env.example
