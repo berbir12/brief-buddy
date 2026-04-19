@@ -10,10 +10,11 @@ import {
   pool,
   upsertBriefingFeedback
 } from "../../db/queries";
-import { AuthenticatedRequest, requireAuth } from "../middleware/auth";
+import { AuthenticatedRequest, requireAuth, requireVerifiedAuth } from "../middleware/auth";
 import { runBriefingPipeline } from "../../agents/orchestrator";
 
 export const briefingsRouter = Router();
+briefingsRouter.use(requireAuth, requireVerifiedAuth);
 const modeSchema = z.enum(["morning", "evening", "weekly", "alert"]);
 const eventLimitSchema = z.coerce.number().int().min(1).max(200).optional();
 const reliabilityLimitSchema = z.coerce.number().int().min(1).max(200).optional();
@@ -64,7 +65,7 @@ async function getUserQueueStats(userId: string): Promise<{
   };
 }
 
-briefingsRouter.post("/trigger", requireAuth, async (req: AuthenticatedRequest, res) => {
+briefingsRouter.post("/trigger", async (req: AuthenticatedRequest, res) => {
   const userId = req.user!.id;
   const parsed = modeSchema.safeParse(req.body?.mode ?? "morning");
   if (!parsed.success) {
@@ -76,7 +77,7 @@ briefingsRouter.post("/trigger", requireAuth, async (req: AuthenticatedRequest, 
   res.json(result);
 });
 
-briefingsRouter.post("/enqueue", requireAuth, async (req: AuthenticatedRequest, res) => {
+briefingsRouter.post("/enqueue", async (req: AuthenticatedRequest, res) => {
   const userId = req.user!.id;
   const parsed = modeSchema.safeParse(req.body?.mode ?? "morning");
   if (!parsed.success) {
@@ -95,7 +96,7 @@ briefingsRouter.post("/enqueue", requireAuth, async (req: AuthenticatedRequest, 
   res.json({ jobId: job.id, deduplicated: false });
 });
 
-briefingsRouter.get("/history", requireAuth, async (req: AuthenticatedRequest, res) => {
+briefingsRouter.get("/history", async (req: AuthenticatedRequest, res) => {
   const result = await pool.query(
     `SELECT
        b.id,
@@ -120,7 +121,7 @@ briefingsRouter.get("/history", requireAuth, async (req: AuthenticatedRequest, r
   res.json(result.rows);
 });
 
-briefingsRouter.get("/metrics", requireAuth, async (req: AuthenticatedRequest, res) => {
+briefingsRouter.get("/metrics", async (req: AuthenticatedRequest, res) => {
   const userId = req.user!.id;
   const metrics = await getBriefingMetrics(userId);
   const deliveryRate7d = metrics.generated7d > 0 ? Number((metrics.delivered7d / metrics.generated7d).toFixed(3)) : 0;
@@ -130,7 +131,7 @@ briefingsRouter.get("/metrics", requireAuth, async (req: AuthenticatedRequest, r
   });
 });
 
-briefingsRouter.get("/jobs/events", requireAuth, async (req: AuthenticatedRequest, res) => {
+briefingsRouter.get("/jobs/events", async (req: AuthenticatedRequest, res) => {
   const userId = req.user!.id;
   const parsedLimit = eventLimitSchema.safeParse(req.query.limit);
   if (!parsedLimit.success && req.query.limit !== undefined) {
@@ -141,7 +142,7 @@ briefingsRouter.get("/jobs/events", requireAuth, async (req: AuthenticatedReques
   res.json(events);
 });
 
-briefingsRouter.get("/reliability-alerts", requireAuth, async (req: AuthenticatedRequest, res) => {
+briefingsRouter.get("/reliability-alerts", async (req: AuthenticatedRequest, res) => {
   const parsedLimit = reliabilityLimitSchema.safeParse(req.query.limit);
   if (!parsedLimit.success && req.query.limit !== undefined) {
     res.status(400).json({ error: "Invalid limit query param" });
@@ -151,7 +152,7 @@ briefingsRouter.get("/reliability-alerts", requireAuth, async (req: Authenticate
   res.json(alerts);
 });
 
-briefingsRouter.get("/jobs/queue-stats", requireAuth, async (req: AuthenticatedRequest, res) => {
+briefingsRouter.get("/jobs/queue-stats", async (req: AuthenticatedRequest, res) => {
   const userId = req.user!.id;
   const counts = await getUserQueueStats(userId);
   res.json({
@@ -161,7 +162,7 @@ briefingsRouter.get("/jobs/queue-stats", requireAuth, async (req: AuthenticatedR
   });
 });
 
-briefingsRouter.get("/system-health", requireAuth, async (req: AuthenticatedRequest, res) => {
+briefingsRouter.get("/system-health", async (req: AuthenticatedRequest, res) => {
   const userId = req.user!.id;
   const [metricsRaw, queue, integrations] = await Promise.all([
     getBriefingMetrics(userId),
@@ -200,7 +201,7 @@ briefingsRouter.get("/system-health", requireAuth, async (req: AuthenticatedRequ
   });
 });
 
-briefingsRouter.post("/:id/feedback", requireAuth, async (req: AuthenticatedRequest, res) => {
+briefingsRouter.post("/:id/feedback", async (req: AuthenticatedRequest, res) => {
   const parsedId = briefingIdParamSchema.safeParse(req.params.id);
   if (!parsedId.success) {
     res.status(400).json({ error: "Invalid briefing id" });
@@ -230,7 +231,7 @@ briefingsRouter.post("/:id/feedback", requireAuth, async (req: AuthenticatedRequ
   res.json({ saved: true });
 });
 
-briefingsRouter.post("/:id/regenerate", requireAuth, async (req: AuthenticatedRequest, res) => {
+briefingsRouter.post("/:id/regenerate", async (req: AuthenticatedRequest, res) => {
   const parsedId = briefingIdParamSchema.safeParse(req.params.id);
   if (!parsedId.success) {
     res.status(400).json({ error: "Invalid briefing id" });
@@ -250,7 +251,7 @@ briefingsRouter.post("/:id/regenerate", requireAuth, async (req: AuthenticatedRe
   res.json(regenerated);
 });
 
-briefingsRouter.get("/jobs/schedule-preview", requireAuth, async (req: AuthenticatedRequest, res) => {
+briefingsRouter.get("/jobs/schedule-preview", async (req: AuthenticatedRequest, res) => {
   const schedule = await getUserSchedule(req.user!.id);
   if (!schedule) {
     res.status(404).json({ error: "Schedule not found for user" });

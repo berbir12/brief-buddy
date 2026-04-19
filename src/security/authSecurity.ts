@@ -60,8 +60,11 @@ export async function consumeAuthRateLimit(action: AuthAction, email: string | u
   ]);
 
   if (emailAttempts === null || ipAttempts === null) {
-    // Fail open if Redis is unavailable so auth can still function.
-    return { allowed: true, retryAfterSeconds: 0 };
+    // Production should fail closed by default. Can be overridden for emergency availability trade-offs.
+    if (env.AUTH_RATE_LIMIT_FAIL_OPEN) {
+      return { allowed: true, retryAfterSeconds: 0 };
+    }
+    return { allowed: false, retryAfterSeconds: windowSeconds };
   }
 
   const allowed = emailAttempts <= maxAttempts && ipAttempts <= maxAttempts;

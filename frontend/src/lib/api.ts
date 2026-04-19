@@ -52,14 +52,12 @@ export interface AuthUser {
 }
 
 export function register(body: { email: string; password: string; phone?: string }): Promise<{
-  token: string;
   user: AuthUser;
   requiresEmailVerification?: boolean;
   verificationEmailSent?: boolean;
   verificationEmailReason?: string;
 }> {
   return api<{
-    token: string;
     user: AuthUser;
     requiresEmailVerification?: boolean;
     verificationEmailSent?: boolean;

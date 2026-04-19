@@ -1,36 +1,98 @@
 # Brief Buddy (VoiceBrief)
 
-Brief Buddy is a voice-first executive assistant that turns your daily work signals into concise, prioritized briefings.
+Brief Buddy is a voice-first executive assistant that turns daily work signals into concise, prioritized briefings.
 
-It pulls updates from your connected tools, identifies what needs attention, generates a readable/spoken briefing, and can deliver it automatically on schedule.
+## Architecture
 
-## What it does
+- **Backend:** Node.js + Express API in `src/`
+- **Frontend:** React + Vite app in `frontend/`
+- **Data:** Postgres for app data, Redis for queueing/scheduling (BullMQ)
+- **Delivery:** optional Twilio call delivery and ElevenLabs text-to-speech
 
-- Aggregates updates from Gmail, Google Calendar, Slack, HubSpot, and keyword-based RSS/news feeds.
-- Prioritizes urgent items and extracts actionable tasks.
-- Generates briefing scripts using an LLM (configured for Ollama).
-- Converts scripts to audio with ElevenLabs (optional).
-- Delivers briefings on demand or on schedule, including Twilio voice-call delivery.
-- Supports multiple briefing modes: morning, evening, weekly recap, and alert.
-- Provides a web dashboard for briefings, tasks, integrations, and user settings.
+## Features
 
-## Core capabilities
+- Email/password auth with email verification
+- Google + Slack integration OAuth
+- Briefing generation (morning/evening/weekly/alert)
+- Task extraction and task management
+- Scheduled jobs and queue workers
+- Health endpoints: `GET /health`, `GET /ready`
 
-- End-to-end briefing pipeline (data collection -> prioritization -> script -> optional audio -> delivery)
-- Task tracking and status updates
-- Integration auth flows (Google + Slack)
-- Background scheduling and queue processing (BullMQ + Redis)
-- API + dashboard architecture for daily operational use
+## Local Development
 
-## Database (Supabase)
+1. Start dependencies: `docker-compose up -d`
+2. Copy env template and set values: `cp .env.example .env`
+3. Install dependencies and run backend:
 
-- Set `DATABASE_URL` to your Supabase Postgres connection string.
-- Set `DATABASE_SSL_MODE=require` (or leave `auto`, which enables SSL automatically for Supabase URLs).
-- Keep `REDIS_URL` pointed to your Redis instance for queue/scheduler features.
-- On app startup, schema initialization runs automatically via `src/db/schema.sql`.
+```sh
+npm install
+npm run dev
+```
 
-## Email verification delivery
+1. In a second terminal, run frontend: `npm run frontend:dev`
 
-- Configure `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, and `EMAIL_FROM` to enable real verification emails.
-- If SMTP is not configured, verification tokens are still generated, but messages are not sent.
-- For local debugging only, keep `AUTH_DEV_LOG_VERIFICATION_LINK=true` to print verification links in backend logs.
+Frontend runs on `http://localhost:8080` and proxies API calls to `http://localhost:3000`.
+
+## Required Environment Variables
+
+Use `.env.example` as the source of truth. Do not commit real credentials.
+
+- `NODE_ENV`, `PORT`
+- `DATABASE_URL`, `DATABASE_SSL_MODE`
+- `REDIS_URL`
+- `JWT_SECRET`
+- `BASE_URL`, `FRONTEND_URL`
+- `SMTP_*`, `EMAIL_FROM` (for verification emails)
+- Provider credentials as needed: `GOOGLE_*`, `SLACK_*`, `TWILIO_*`, `ELEVENLABS_*`, `HUBSPOT_API_KEY`, `AWS_*`
+
+### Production requirements
+
+- `JWT_SECRET` must be strong (not `change-me`)
+- `BASE_URL`, `FRONTEND_URL`, OAuth redirect URIs must be HTTPS
+- `AUTH_DEV_RETURN_VERIFICATION_TOKEN=false`
+- `AUTH_DEV_LOG_VERIFICATION_LINK=false`
+- `AUTH_RATE_LIMIT_FAIL_OPEN=false` (recommended)
+
+## Production Deployment
+
+### Docker image
+
+Build and run the app container:
+
+```sh
+docker build -t voicebrief:latest .
+docker run --env-file .env -p 3000:3000 voicebrief:latest
+```
+
+The container serves both API and built frontend.
+
+### CI
+
+GitHub Actions workflow is defined in `.github/workflows/ci.yml` and runs:
+
+- Backend typecheck + tests
+- Frontend lint + tests + build
+
+## Database migrations
+
+- SQL migrations are stored in `src/db/migrations`.
+- On startup, the app records applied migrations in `schema_migrations` and only runs new files.
+- Keep migration filenames ordered with a numeric prefix (for example `002_add_index.sql`).
+
+## Operations Runbook (minimum)
+
+- **Liveness:** `GET /health`
+- **Readiness:** `GET /ready` (checks Postgres + queue availability)
+- **Logs:** backend uses `morgan` and app logs to stdout
+- **Shutdown:** graceful `SIGINT`/`SIGTERM` handling is implemented
+- **Detailed procedures:** `docs/operations-runbook.md`
+
+## Security Notes
+
+- Core API routes now require both authentication and verified email.
+- Auth rate limits are Redis-backed and default to fail-closed if Redis is unavailable.
+- Never store production secrets in repository files.
+
+## Known production gaps
+
+- Replace placeholder legal copy in frontend privacy/terms pages with final legal documents.

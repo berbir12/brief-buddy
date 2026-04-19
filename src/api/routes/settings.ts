@@ -6,11 +6,12 @@ import { z } from "zod";
 import { disconnectIntegration, getIntegrationsStatus, getUserSettings, pool, upsertIntegration } from "../../db/queries";
 import { fetchIndustryNews } from "../../agents/newsAgent";
 import { getIntegrationToken, refreshGoogleTokenIfNeeded } from "../../integrations/tokens";
-import { AuthenticatedRequest, requireAuth } from "../middleware/auth";
+import { AuthenticatedRequest, requireAuth, requireVerifiedAuth } from "../middleware/auth";
 import { registerSchedulesForUser } from "../../scheduler/registerUserSchedules";
 
 export const settingsRouter = Router();
 settingsRouter.use(requireAuth);
+settingsRouter.use(requireVerifiedAuth);
 const settingsPatchSchema = z.object({
   morningTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
   eveningTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),

@@ -108,10 +108,8 @@ authRouter.post("/register", async (req, res) => {
     console.error(`[auth] registerSchedulesForUser failed for ${user.id}:`, msg);
   }
 
-  const token = signSessionToken(user.id);
   const verification = await issueEmailVerification(user.id, user.email);
   res.status(201).json({
-    token,
     user: { id: user.id, email: user.email, emailVerified: false },
     requiresEmailVerification: true,
     verificationEmailSent: verification.sent,
@@ -364,7 +362,7 @@ authRouter.get("/slack/callback", async (req, res) => {
     (response.data?.authed_user?.access_token as string | undefined) ??
     (response.data?.access_token as string | undefined);
   if (!response.data?.ok || !accessToken) {
-    res.status(400).json({ error: "Slack token exchange failed", detail: response.data });
+    res.status(400).json({ error: "Slack token exchange failed" });
     return;
   }
 

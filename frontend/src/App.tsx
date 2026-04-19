@@ -15,6 +15,8 @@ const SettingsPage = lazy(() => import("./pages/SettingsPage.tsx"));
 const BriefingsPage = lazy(() => import("./pages/BriefingsPage.tsx"));
 const AuthPage = lazy(() => import("./pages/AuthPage.tsx"));
 const VerifyEmailPage = lazy(() => import("./pages/VerifyEmailPage.tsx"));
+const PrivacyPage = lazy(() => import("./pages/PrivacyPage.tsx"));
+const TermsPage = lazy(() => import("./pages/TermsPage.tsx"));
 
 const queryClient = new QueryClient();
 
@@ -30,6 +32,8 @@ const App = () => (
               <Route path="/" element={<Index />} />
               <Route path="/auth" element={<AuthPage />} />
               <Route path="/verify-email" element={<VerifyEmailPage />} />
+              <Route path="/privacy" element={<PrivacyPage />} />
+              <Route path="/terms" element={<TermsPage />} />
               <Route
                 path="/dashboard"
                 element={

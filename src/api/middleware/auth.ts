@@ -1,6 +1,7 @@
 import { NextFunction, Request, Response } from "express";
 import jwt from "jsonwebtoken";
 import { env } from "../../config/env";
+import { findAuthUserById } from "../../db/queries";
 
 export interface AuthenticatedRequest extends Request {
   user?: { id: string };
@@ -32,4 +33,27 @@ export function requireAuth(req: AuthenticatedRequest, res: Response, next: Next
   } catch {
     res.status(401).json({ error: "Invalid token" });
   }
+}
+
+export async function requireVerifiedAuth(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  if (!req.user?.id) {
+    res.status(401).json({ error: "Authentication required" });
+    return;
+  }
+
+  const user = await findAuthUserById(req.user.id);
+  if (!user) {
+    res.status(401).json({ error: "User not found" });
+    return;
+  }
+  if (!user.emailVerifiedAt) {
+    res.status(403).json({ error: "Verify your email to continue." });
+    return;
+  }
+
+  next();
 }

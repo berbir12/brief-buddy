@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { createTask, deleteTask, getTasks, updateTask } from "../../tasks/taskStore";
-import { AuthenticatedRequest, requireAuth } from "../middleware/auth";
+import { AuthenticatedRequest, requireAuth, requireVerifiedAuth } from "../middleware/auth";
 
 export const tasksRouter = Router();
 const createTaskSchema = z.object({
@@ -19,6 +19,7 @@ const patchTaskSchema = z.object({
 });
 
 tasksRouter.use(requireAuth);
+tasksRouter.use(requireVerifiedAuth);
 
 tasksRouter.get("/", async (req: AuthenticatedRequest, res) => {
   const tasks = await getTasks(req.user!.id);

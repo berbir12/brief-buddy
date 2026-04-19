@@ -14,6 +14,7 @@ export default function AuthPage() {
   const [phone, setPhone] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
 
   const redirectPath = useMemo(() => {
     const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname;
@@ -28,14 +29,27 @@ export default function AuthPage() {
     event.preventDefault();
     setSubmitting(true);
     setError(null);
+    setInfo(null);
 
     try {
       if (mode === "login") {
         await login(email, password);
+        navigate(redirectPath, { replace: true });
       } else {
-        await register(email, password, phone.trim() || undefined);
+        const result = await register(email, password, phone.trim() || undefined);
+        setMode("login");
+        setPassword("");
+        setPhone("");
+        if (result.verificationEmailSent) {
+          setInfo("Account created. Check your inbox to verify your email, then sign in.");
+        } else {
+          setInfo(
+            `Account created, but verification email was not sent${
+              result.verificationEmailReason ? `: ${result.verificationEmailReason}` : "."
+            }`
+          );
+        }
       }
-      navigate(redirectPath, { replace: true });
     } catch (submitError) {
       const message = submitError instanceof Error ? submitError.message : "Authentication failed";
       setError(message);
@@ -140,6 +154,9 @@ export default function AuthPage() {
 
           {error ? (
             <p className="text-sm text-destructive">{error}</p>
+          ) : null}
+          {info ? (
+            <p className="text-sm text-emerald-600">{info}</p>
           ) : null}
 
           <button

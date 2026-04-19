@@ -24,7 +24,11 @@ type AuthContextValue = {
   isLoading: boolean;
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, phone?: string) => Promise<void>;
+  register: (
+    email: string,
+    password: string,
+    phone?: string
+  ) => Promise<{ verificationEmailSent?: boolean; verificationEmailReason?: string }>;
   resendVerification: () => Promise<{ sent: boolean; alreadyVerified?: boolean; reason?: string; verificationToken?: string }>;
   loginDemo: () => Promise<void>;
   logout: () => Promise<void>;
@@ -57,8 +61,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const registerUser = useCallback(async (nextEmail: string, password: string, phone?: string) => {
     const result = await register({ email: nextEmail, password, phone });
-    persistAuth(result.token, result.user);
-  }, [persistAuth]);
+    // Registration does not sign users in. They must verify email, then log in.
+    return {
+      verificationEmailSent: result.verificationEmailSent,
+      verificationEmailReason: result.verificationEmailReason
+    };
+  }, []);
 
   const loginDemo = useCallback(async () => {
     const { token: t, userId: u } = await getDemoToken();

@@ -1,100 +1,42 @@
 # Brief Buddy Frontend
 
-React dashboard for Brief Buddy — daily voice briefings, task inbox, and settings. Wired to the Brief Buddy API (auth, briefings, tasks, settings, integrations).
+React dashboard for Brief Buddy (auth, briefings, tasks, settings, integrations).
 
-## Running with the API
+## Development
 
-From the **repo root**:
+From the repository root:
 
-1. **Backend** (Postgres + Redis required, e.g. `docker-compose up -d`):
-   ```sh
-   npm run dev
-   ```
-2. **Frontend** (in another terminal):
-   ```sh
-   npm run frontend:dev
-   ```
-   Opens at http://localhost:8080. API requests are proxied to http://localhost:3000.
+1. Start backend dependencies: `docker-compose up -d`
+1. Start backend API: `npm run dev`
+1. Start frontend dev server: `npm run frontend:dev`
 
-**Demo login:** Click “Try demo” on the landing page or go to Dashboard; the app uses `GET /api/auth/demo-token` and stores the JWT.
+Frontend runs at `http://localhost:8080` and proxies `/api` to `http://localhost:3000`.
 
-## Build
+## Scripts
 
-```sh
-cd frontend && npm install && npm run build
-```
-Output: `frontend/dist`. In production the backend can serve this folder (see root `src/index.ts`).
+Run in `frontend/`:
 
----
+- `npm run dev` - start Vite dev server
+- `npm run build` - production build to `frontend/dist`
+- `npm run lint` - ESLint checks
+- `npm run test` - Vitest tests
 
-## Project info (Lovable)
+## Auth behavior
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+- Registration creates an account but does not sign in automatically.
+- Users verify email, then sign in.
+- Protected product routes require a verified account on the backend.
 
-## How can I edit this code?
+## Production notes
 
-There are several ways of editing your application.
+- This app is served by the backend in production (`src/index.ts`).
+- Keep `VITE_API_BASE` empty when frontend and API share origin.
 
-**Use Lovable**
+## Legal content configuration
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
-
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
-```
-
-**Edit a file directly in GitHub**
-
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
-
-**Use GitHub Codespaces**
-
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
-
-## What technologies are used for this project?
-
-This project is built with:
-
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+- Legal page text is rendered from:
+  - `frontend/src/pages/PrivacyPage.tsx`
+  - `frontend/src/pages/TermsPage.tsx`
+- Shared business/legal identity values are centralized in:
+  - `frontend/src/config/legal.ts`
+- Before launch, update `LEGAL_CONFIG` (entity name, contact emails, address, effective dates) and have counsel review.

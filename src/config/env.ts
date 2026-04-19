@@ -11,6 +11,7 @@ const envSchema = z.object({
   AUTH_RATE_LIMIT_WINDOW_SECONDS: z.coerce.number().int().positive().default(900),
   AUTH_RATE_LIMIT_MAX_ATTEMPTS: z.coerce.number().int().positive().default(12),
   AUTH_REGISTER_RATE_LIMIT_MAX_ATTEMPTS: z.coerce.number().int().positive().default(6),
+  AUTH_RATE_LIMIT_FAIL_OPEN: z.coerce.boolean().default(false),
   AUTH_DEV_RETURN_VERIFICATION_TOKEN: z.coerce.boolean().default(false),
   AUTH_DEV_LOG_VERIFICATION_LINK: z.coerce.boolean().default(false),
   SMTP_HOST: z.string().optional(),
