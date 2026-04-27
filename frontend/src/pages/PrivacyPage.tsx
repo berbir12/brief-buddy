@@ -123,8 +123,7 @@ export default function PrivacyPage() {
           </p>
         </section>
         <p className="text-xs">
-          This template is provided for operational readiness and should be reviewed by qualified counsel before public
-          launch.
+          This Privacy Policy applies to your use of {LEGAL_CONFIG.productName} from the effective date listed above.
         </p>
       </div>
     </main>

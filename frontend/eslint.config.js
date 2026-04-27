@@ -19,8 +19,15 @@ export default tseslint.config(
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
-      "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
+      "react-refresh/only-export-components": ["error", { allowConstantExport: true }],
       "@typescript-eslint/no-unused-vars": "off",
     },
   },
+  {
+    files: ["src/components/ui/**/*.{ts,tsx}", "src/contexts/AuthContext.tsx"],
+    rules: {
+      // These modules intentionally co-locate component exports and helpers for the shadcn/ui pattern.
+      "react-refresh/only-export-components": "off",
+    },
+  }
 );

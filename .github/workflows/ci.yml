@@ -6,6 +6,23 @@ on:
   pull_request:
 
 jobs:
+  release_gate:
+    name: Release gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install backend dependencies
+        run: npm ci
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: frontend
+      - name: Run release gate checks
+        run: npm run release:check
+
   backend:
     name: Backend checks
     runs-on: ubuntu-latest

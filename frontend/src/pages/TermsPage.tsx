@@ -121,8 +121,7 @@ export default function TermsPage() {
           </p>
         </section>
         <p className="text-xs">
-          This template is provided for operational readiness and should be reviewed by qualified counsel before public
-          launch.
+          These Terms remain in effect while you use {LEGAL_CONFIG.productName} or maintain an account with us.
         </p>
       </div>
     </main>
